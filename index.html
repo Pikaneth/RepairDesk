@@ -11,6 +11,7 @@
     <title>RepairDesk — Device repair tracker</title>
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
+    <script src="i18n.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -30,26 +31,26 @@
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z" />
             </svg>
-            Overview
+            <span data-i18n="overview">Overview</span>
           </a>
           <a class="nav-item" href="#repairs">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L4 17a2.1 2.1 0 0 0 3 3l4.9-4.9a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" />
             </svg>
-            Repairs
+            <span data-i18n="repairs">Repairs</span>
           </a>
         </nav>
 
         <div class="sidebar-note">
           <span class="note-icon" aria-hidden="true">↳</span>
           <div>
-            <strong>Saved locally</strong>
-            <p>Your repair data stays in this browser.</p>
+            <strong data-i18n="savedLocally">Saved locally</strong>
+            <p data-i18n="savedLocallyCopy">Your repair data stays in this browser.</p>
           </div>
         </div>
 
         <div class="sidebar-footer">
-          <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch colour theme">
+          <button class="theme-toggle" id="themeToggle" type="button" data-i18n-aria="switchTheme" aria-label="Switch colour theme">
             <svg class="sun-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10ZM12 1v3m0 16v3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M1 12h3m16 0h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
             </svg>
@@ -57,6 +58,13 @@
               <path d="M21 15.2A9 9 0 1 1 8.8 3a7 7 0 0 0 12.2 12.2Z" />
             </svg>
             <span id="themeLabel">Dark mode</span>
+          </button>
+          <button class="theme-toggle" id="preferencesButton" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+            </svg>
+            <span id="preferencesLabel">English · EUR</span>
           </button>
           <p class="author">Pikaneth <span>·</span> Sviatoslav</p>
         </div>
@@ -72,18 +80,26 @@
             </span>
             <span>RepairDesk</span>
           </a>
-          <button class="icon-button" id="mobileThemeToggle" type="button" aria-label="Switch colour theme">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M21 15.2A9 9 0 1 1 8.8 3a7 7 0 0 0 12.2 12.2Z" />
-            </svg>
-          </button>
+          <div class="mobile-actions">
+            <button class="icon-button" id="mobilePreferencesButton" type="button" data-i18n-aria="settings" aria-label="Language and currency">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+              </svg>
+            </button>
+            <button class="icon-button" id="mobileThemeToggle" type="button" data-i18n-aria="switchTheme" aria-label="Switch colour theme">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 15.2A9 9 0 1 1 8.8 3a7 7 0 0 0 12.2 12.2Z" />
+              </svg>
+            </button>
+          </div>
         </header>
 
         <section class="hero" id="overview">
           <div>
-            <p class="eyebrow"><span></span> Workshop overview</p>
-            <h1>Every repair,<br />under control.</h1>
-            <p class="hero-copy">
+            <p class="eyebrow"><span></span> <span data-i18n="workshopOverview">Workshop overview</span></p>
+            <h1 data-i18n="heroTitle">Every repair,<br />under control.</h1>
+            <p class="hero-copy" data-i18n="heroCopy">
               Track devices, parts and costs without losing the details that matter.
             </p>
           </div>
@@ -91,14 +107,14 @@
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 5v14M5 12h14" />
             </svg>
-            New repair
+            <span data-i18n="newRepair">New repair</span>
           </button>
         </section>
 
-        <section class="stats-grid" aria-label="Repair statistics">
+        <section class="stats-grid" data-i18n-aria="repairStatistics" aria-label="Repair statistics">
           <article class="stat-card stat-card-accent">
             <div class="stat-card-top">
-              <span>Active repairs</span>
+              <span data-i18n="activeRepairs">Active repairs</span>
               <span class="stat-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L4 17a2.1 2.1 0 0 0 3 3l4.9-4.9a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" />
@@ -111,7 +127,7 @@
 
           <article class="stat-card">
             <div class="stat-card-top">
-              <span>Waiting for parts</span>
+              <span data-i18n="waitingParts">Waiting for parts</span>
               <span class="stat-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path d="M6 2h12v5l-4 5 4 5v5H6v-5l4-5-4-5V2Z" />
@@ -119,12 +135,12 @@
               </span>
             </div>
             <strong id="waitingCount">0</strong>
-            <p>Needs attention</p>
+            <p data-i18n="needsAttention">Needs attention</p>
           </article>
 
           <article class="stat-card">
             <div class="stat-card-top">
-              <span>Completed</span>
+              <span data-i18n="completed">Completed</span>
               <span class="stat-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path d="m5 12 4 4L19 6" />
@@ -137,52 +153,52 @@
 
           <article class="stat-card">
             <div class="stat-card-top">
-              <span>Total spent</span>
-              <span class="stat-icon" aria-hidden="true">€</span>
+              <span data-i18n="totalSpent">Total spent</span>
+              <span class="stat-icon" id="currencyStatSymbol" aria-hidden="true">€</span>
             </div>
             <strong id="totalSpent">€0.00</strong>
-            <p>Parts and labour</p>
+            <p data-i18n="partsLabour">Parts and labour</p>
           </article>
         </section>
 
         <section class="repairs-section" id="repairs">
           <div class="section-heading">
             <div>
-              <p class="eyebrow"><span></span> Repair queue</p>
-              <h2>Devices on the bench</h2>
+              <p class="eyebrow"><span></span> <span data-i18n="repairQueue">Repair queue</span></p>
+              <h2 data-i18n="devicesBench">Devices on the bench</h2>
             </div>
             <p class="result-count" id="resultCount">0 repairs</p>
           </div>
 
           <div class="toolbar">
             <label class="search-field">
-              <span class="sr-only">Search repairs</span>
+              <span class="sr-only" data-i18n="searchRepairs">Search repairs</span>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="11" cy="11" r="7" />
                 <path d="m20 20-4-4" />
               </svg>
-              <input id="searchInput" type="search" placeholder="Search device, issue or part…" autocomplete="off" />
+              <input id="searchInput" type="search" data-i18n-placeholder="searchPlaceholder" placeholder="Search device, issue or part…" autocomplete="off" />
             </label>
 
             <div class="toolbar-selects">
               <label class="select-field">
-                <span class="sr-only">Filter by status</span>
+                <span class="sr-only" data-i18n="filterStatus">Filter by status</span>
                 <select id="statusFilter">
-                  <option value="all">All statuses</option>
-                  <option value="waiting">Waiting</option>
-                  <option value="in-progress">In progress</option>
-                  <option value="completed">Completed</option>
+                  <option value="all" data-i18n="allStatuses">All statuses</option>
+                  <option value="waiting" data-i18n="waiting">Waiting</option>
+                  <option value="in-progress" data-i18n="inProgress">In progress</option>
+                  <option value="completed" data-i18n="completed">Completed</option>
                 </select>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg>
               </label>
 
               <label class="select-field">
-                <span class="sr-only">Sort repairs</span>
+                <span class="sr-only" data-i18n="sortRepairs">Sort repairs</span>
                 <select id="sortSelect">
-                  <option value="newest">Newest first</option>
-                  <option value="oldest">Oldest first</option>
-                  <option value="cost-high">Highest cost</option>
-                  <option value="cost-low">Lowest cost</option>
+                  <option value="newest" data-i18n="newest">Newest first</option>
+                  <option value="oldest" data-i18n="oldest">Oldest first</option>
+                  <option value="cost-high" data-i18n="highestCost">Highest cost</option>
+                  <option value="cost-low" data-i18n="lowestCost">Lowest cost</option>
                 </select>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg>
               </label>
@@ -199,13 +215,13 @@
             </span>
             <h3 id="emptyTitle">No repairs yet</h3>
             <p id="emptyCopy">Add your first device to start tracking the repair.</p>
-            <button class="secondary-button" id="emptyAddButton" type="button">Add a repair</button>
+            <button class="secondary-button" id="emptyAddButton" type="button" data-i18n="addRepair">Add a repair</button>
           </div>
         </section>
 
         <footer class="page-footer">
-          <p>RepairDesk <span>·</span> Built by Pikaneth (Sviatoslav)</p>
-          <p>Data is stored locally in your browser.</p>
+          <p>RepairDesk <span>·</span> <span data-i18n="builtBy">Built by</span> Pikaneth (Sviatoslav)</p>
+          <p data-i18n="localFooter">Data is stored locally in your browser.</p>
         </footer>
       </main>
     </div>
@@ -214,10 +230,10 @@
       <form id="repairForm" method="dialog" novalidate>
         <div class="dialog-header">
           <div>
-            <p class="eyebrow"><span></span> Repair record</p>
+            <p class="eyebrow"><span></span> <span data-i18n="repairRecord">Repair record</span></p>
             <h2 id="dialogTitle">New repair</h2>
           </div>
-          <button class="icon-button dialog-close" id="closeDialogButton" type="button" aria-label="Close dialog">
+          <button class="icon-button dialog-close" id="closeDialogButton" type="button" data-i18n-aria="close" aria-label="Close dialog">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
           </button>
         </div>
@@ -227,57 +243,57 @@
 
           <div class="form-grid">
             <label class="field field-wide">
-              <span>Device model <strong aria-hidden="true">*</strong></span>
-              <input id="deviceInput" name="device" type="text" placeholder="e.g. Samsung Galaxy S22 Ultra" required maxlength="80" />
+              <span><span data-i18n="deviceModel">Device model</span> <strong aria-hidden="true">*</strong></span>
+              <input id="deviceInput" name="device" type="text" data-i18n-placeholder="devicePlaceholder" placeholder="e.g. Samsung Galaxy S23" required maxlength="80" />
               <small class="field-error" id="deviceError"></small>
             </label>
 
             <label class="field">
-              <span>Category</span>
+              <span data-i18n="category">Category</span>
               <select id="categoryInput" name="category">
-                <option>Smartphone</option>
-                <option>Tablet</option>
-                <option>Laptop</option>
-                <option>Desktop PC</option>
-                <option>Game console</option>
-                <option>Other</option>
+                <option value="smartphone" data-i18n="smartphone">Smartphone</option>
+                <option value="tablet" data-i18n="tablet">Tablet</option>
+                <option value="laptop" data-i18n="laptop">Laptop</option>
+                <option value="desktop" data-i18n="desktop">Desktop PC</option>
+                <option value="console" data-i18n="console">Game console</option>
+                <option value="other" data-i18n="other">Other</option>
               </select>
             </label>
 
             <label class="field">
-              <span>Status</span>
+              <span data-i18n="status">Status</span>
               <select id="statusInput" name="status">
-                <option value="waiting">Waiting</option>
-                <option value="in-progress">In progress</option>
-                <option value="completed">Completed</option>
+                <option value="waiting" data-i18n="waiting">Waiting</option>
+                <option value="in-progress" data-i18n="inProgress">In progress</option>
+                <option value="completed" data-i18n="completed">Completed</option>
               </select>
             </label>
 
             <label class="field field-wide">
-              <span>Issue <strong aria-hidden="true">*</strong></span>
-              <input id="issueInput" name="issue" type="text" placeholder="What needs to be repaired?" required maxlength="120" />
+              <span><span data-i18n="issue">Issue</span> <strong aria-hidden="true">*</strong></span>
+              <input id="issueInput" name="issue" type="text" data-i18n-placeholder="issuePlaceholder" placeholder="What needs to be repaired?" required maxlength="120" />
               <small class="field-error" id="issueError"></small>
             </label>
 
             <label class="field">
-              <span>Serial number</span>
-              <input id="serialInput" name="serial" type="text" placeholder="Optional" maxlength="60" />
+              <span data-i18n="serial">Serial number</span>
+              <input id="serialInput" name="serial" type="text" data-i18n-placeholder="optional" placeholder="Optional" maxlength="60" />
             </label>
 
             <label class="field">
-              <span>Received date</span>
+              <span data-i18n="receivedDate">Received date</span>
               <input id="receivedInput" name="received" type="date" required />
             </label>
 
             <label class="field">
-              <span>Target date</span>
+              <span data-i18n="targetDate">Target date</span>
               <input id="targetInput" name="target" type="date" />
             </label>
 
             <label class="field">
-              <span>Labour cost</span>
+              <span data-i18n="labourCost">Labour cost</span>
               <span class="money-input">
-                <span>€</span>
+                <span class="currency-symbol">€</span>
                 <input id="labourInput" name="labour" type="number" inputmode="decimal" min="0" step="0.01" value="0" />
               </span>
             </label>
@@ -286,30 +302,30 @@
           <section class="parts-editor" aria-labelledby="partsHeading">
             <div class="parts-heading">
               <div>
-                <h3 id="partsHeading">Parts</h3>
-                <p>Add every component used in this repair.</p>
+                <h3 id="partsHeading" data-i18n="parts">Parts</h3>
+                <p data-i18n="partsCopy">Add every component used in this repair.</p>
               </div>
               <button class="text-button" id="addPartButton" type="button">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-                Add part
+                <span data-i18n="addPart">Add part</span>
               </button>
             </div>
             <div class="parts-list" id="partsList"></div>
           </section>
 
           <label class="field field-wide notes-field">
-            <span>Notes</span>
-            <textarea id="notesInput" name="notes" rows="4" placeholder="Work completed, observations or next steps…" maxlength="600"></textarea>
+            <span data-i18n="notes">Notes</span>
+            <textarea id="notesInput" name="notes" rows="4" data-i18n-placeholder="notesPlaceholder" placeholder="Work completed, observations or next steps…" maxlength="600"></textarea>
           </label>
 
           <div class="cost-summary">
-            <span>Repair total</span>
+            <span data-i18n="repairTotal">Repair total</span>
             <strong id="formTotal">€0.00</strong>
           </div>
         </div>
 
         <div class="dialog-footer">
-          <button class="secondary-button" id="cancelButton" type="button">Cancel</button>
+          <button class="secondary-button" id="cancelButton" type="button" data-i18n="cancel">Cancel</button>
           <button class="primary-button" type="submit">
             <span id="submitButtonLabel">Save repair</span>
           </button>
@@ -322,11 +338,11 @@
         <span class="confirm-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" /></svg>
         </span>
-        <h2>Delete this repair?</h2>
-        <p>This removes the device and its cost history from this browser.</p>
+        <h2 data-i18n="deleteTitle">Delete this repair?</h2>
+        <p data-i18n="deleteCopy">This removes the device and its cost history from this browser.</p>
         <div class="confirm-actions">
-          <button class="secondary-button" id="cancelDeleteButton" type="button">Keep repair</button>
-          <button class="danger-button" id="confirmDeleteButton" type="button">Delete repair</button>
+          <button class="secondary-button" id="cancelDeleteButton" type="button" data-i18n="keepRepair">Keep repair</button>
+          <button class="danger-button" id="confirmDeleteButton" type="button" data-i18n="deleteRepair">Delete repair</button>
         </div>
       </div>
     </dialog>
@@ -336,20 +352,72 @@
     <template id="partRowTemplate">
       <div class="part-row">
         <label class="field part-name-field">
-          <span class="sr-only">Part name</span>
-          <input class="part-name" type="text" placeholder="Part name" maxlength="80" />
+          <span class="sr-only" data-i18n="partName">Part name</span>
+          <input class="part-name" type="text" data-i18n-placeholder="partName" placeholder="Part name" maxlength="80" />
         </label>
         <label class="field">
-          <span class="sr-only">Part cost</span>
+          <span class="sr-only" data-i18n="partCost">Part cost</span>
           <span class="money-input compact">
-            <span>€</span>
-            <input class="part-cost" type="number" inputmode="decimal" min="0" step="0.01" value="0" aria-label="Part cost" />
+            <span class="currency-symbol">€</span>
+            <input class="part-cost" type="number" inputmode="decimal" min="0" step="any" value="0" data-i18n-aria="partCost" aria-label="Part cost" />
           </span>
         </label>
-        <button class="icon-button remove-part" type="button" aria-label="Remove part">
+        <button class="icon-button remove-part" type="button" data-i18n-aria="removePart" aria-label="Remove part">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
         </button>
       </div>
     </template>
+
+    <dialog class="setup-dialog" id="setupDialog" aria-labelledby="setupTitle">
+      <div class="setup-shell">
+        <div class="setup-brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L3.5 17.5a2.1 2.1 0 0 0 3 3l5.4-5.4a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" />
+            </svg>
+          </span>
+          <span>RepairDesk</span>
+          <button class="icon-button setup-close" id="setupCloseButton" type="button" data-i18n-aria="close" aria-label="Close" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+
+        <div class="setup-progress" aria-hidden="true">
+          <span class="active"></span>
+          <span></span>
+        </div>
+
+        <section class="setup-step" id="languageStep">
+          <p class="eyebrow"><span></span> <span data-i18n="languageStep">Step 1 of 2</span></p>
+          <h2 id="setupTitle" data-i18n="chooseLanguage">Choose your language</h2>
+          <p class="setup-copy" data-i18n="chooseLanguageCopy">You can change it later in settings.</p>
+          <div class="language-grid" id="languageGrid" role="radiogroup" aria-label="Language"></div>
+          <div class="setup-actions">
+            <button class="primary-button" id="languageContinueButton" type="button" data-i18n="continue">Continue</button>
+          </div>
+        </section>
+
+        <section class="setup-step" id="currencyStep" hidden>
+          <p class="eyebrow"><span></span> <span data-i18n="currencyStep">Step 2 of 2</span></p>
+          <h2 id="currencySetupTitle" data-i18n="chooseCurrency">Choose your currency</h2>
+          <p class="setup-copy" data-i18n="chooseCurrencyCopy">Repair totals and costs will use this currency.</p>
+
+          <label class="currency-picker">
+            <span data-i18n="currency">Currency</span>
+            <select id="currencySelect"></select>
+          </label>
+          <div class="currency-preview">
+            <span data-i18n="currencyPreview">Preview</span>
+            <strong id="currencyPreview">€1,234.56</strong>
+          </div>
+          <p class="currency-hint" data-i18n="currencyHint">Changing currency does not convert existing amounts.</p>
+
+          <div class="setup-actions split">
+            <button class="secondary-button" id="currencyBackButton" type="button" data-i18n="back">Back</button>
+            <button class="primary-button" id="finishSetupButton" type="button" data-i18n="start">Start using RepairDesk</button>
+          </div>
+        </section>
+      </div>
+    </dialog>
   </body>
 </html>
