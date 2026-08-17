@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="RepairDesk is a lightweight dashboard for tracking device repairs, parts and costs."
+    />
+    <meta name="theme-color" content="#f4f2ed" />
+    <title>RepairDesk — Device repair tracker</title>
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Primary navigation">
+        <a class="brand" href="#top" aria-label="RepairDesk home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="img">
+              <path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L3.5 17.5a2.1 2.1 0 0 0 3 3l5.4-5.4a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" />
+            </svg>
+          </span>
+          <span>RepairDesk</span>
+        </a>
+
+        <nav class="nav-list">
+          <a class="nav-item active" href="#overview">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z" />
+            </svg>
+            Overview
+          </a>
+          <a class="nav-item" href="#repairs">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L4 17a2.1 2.1 0 0 0 3 3l4.9-4.9a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" />
+            </svg>
+            Repairs
+          </a>
+        </nav>
+
+        <div class="sidebar-note">
+          <span class="note-icon" aria-hidden="true">↳</span>
+          <div>
+            <strong>Saved locally</strong>
+            <p>Your repair data stays in this browser.</p>
+          </div>
+        </div>
+
+        <div class="sidebar-footer">
+          <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch colour theme">
+            <svg class="sun-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10ZM12 1v3m0 16v3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M1 12h3m16 0h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
+            </svg>
+            <svg class="moon-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 15.2A9 9 0 1 1 8.8 3a7 7 0 0 0 12.2 12.2Z" />
+            </svg>
+            <span id="themeLabel">Dark mode</span>
+          </button>
+          <p class="author">Pikaneth <span>·</span> Sviatoslav</p>
+        </div>
+      </aside>
+
+      <main class="workspace" id="top">
+        <header class="mobile-header">
+          <a class="brand" href="#top">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L3.5 17.5a2.1 2.1 0 0 0 3 3l5.4-5.4a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" />
+              </svg>
+            </span>
+            <span>RepairDesk</span>
+          </a>
+          <button class="icon-button" id="mobileThemeToggle" type="button" aria-label="Switch colour theme">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 15.2A9 9 0 1 1 8.8 3a7 7 0 0 0 12.2 12.2Z" />
+            </svg>
+          </button>
+        </header>
+
+        <section class="hero" id="overview">
+          <div>
+            <p class="eyebrow"><span></span> Workshop overview</p>
+            <h1>Every repair,<br />under control.</h1>
+            <p class="hero-copy">
+              Track devices, parts and costs without losing the details that matter.
+            </p>
+          </div>
+          <button class="primary-button hero-action" id="addRepairButton" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New repair
+          </button>
+        </section>
+
+        <section class="stats-grid" aria-label="Repair statistics">
+          <article class="stat-card stat-card-accent">
+            <div class="stat-card-top">
+              <span>Active repairs</span>
+              <span class="stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L4 17a2.1 2.1 0 0 0 3 3l4.9-4.9a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" />
+                </svg>
+              </span>
+            </div>
+            <strong id="activeCount">0</strong>
+            <p id="activeHint">No repairs in progress</p>
+          </article>
+
+          <article class="stat-card">
+            <div class="stat-card-top">
+              <span>Waiting for parts</span>
+              <span class="stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M6 2h12v5l-4 5 4 5v5H6v-5l4-5-4-5V2Z" />
+                </svg>
+              </span>
+            </div>
+            <strong id="waitingCount">0</strong>
+            <p>Needs attention</p>
+          </article>
+
+          <article class="stat-card">
+            <div class="stat-card-top">
+              <span>Completed</span>
+              <span class="stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="m5 12 4 4L19 6" />
+                </svg>
+              </span>
+            </div>
+            <strong id="completedCount">0</strong>
+            <p id="completedHint">Finished repairs</p>
+          </article>
+
+          <article class="stat-card">
+            <div class="stat-card-top">
+              <span>Total spent</span>
+              <span class="stat-icon" aria-hidden="true">€</span>
+            </div>
+            <strong id="totalSpent">€0.00</strong>
+            <p>Parts and labour</p>
+          </article>
+        </section>
+
+        <section class="repairs-section" id="repairs">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow"><span></span> Repair queue</p>
+              <h2>Devices on the bench</h2>
+            </div>
+            <p class="result-count" id="resultCount">0 repairs</p>
+          </div>
+
+          <div class="toolbar">
+            <label class="search-field">
+              <span class="sr-only">Search repairs</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-4-4" />
+              </svg>
+              <input id="searchInput" type="search" placeholder="Search device, issue or part…" autocomplete="off" />
+            </label>
+
+            <div class="toolbar-selects">
+              <label class="select-field">
+                <span class="sr-only">Filter by status</span>
+                <select id="statusFilter">
+                  <option value="all">All statuses</option>
+                  <option value="waiting">Waiting</option>
+                  <option value="in-progress">In progress</option>
+                  <option value="completed">Completed</option>
+                </select>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg>
+              </label>
+
+              <label class="select-field">
+                <span class="sr-only">Sort repairs</span>
+                <select id="sortSelect">
+                  <option value="newest">Newest first</option>
+                  <option value="oldest">Oldest first</option>
+                  <option value="cost-high">Highest cost</option>
+                  <option value="cost-low">Lowest cost</option>
+                </select>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg>
+              </label>
+            </div>
+          </div>
+
+          <div class="repair-grid" id="repairGrid" aria-live="polite"></div>
+
+          <div class="empty-state" id="emptyState" hidden>
+            <span class="empty-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L4 17a2.1 2.1 0 0 0 3 3l4.9-4.9a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" />
+              </svg>
+            </span>
+            <h3 id="emptyTitle">No repairs yet</h3>
+            <p id="emptyCopy">Add your first device to start tracking the repair.</p>
+            <button class="secondary-button" id="emptyAddButton" type="button">Add a repair</button>
+          </div>
+        </section>
+
+        <footer class="page-footer">
+          <p>RepairDesk <span>·</span> Built by Pikaneth (Sviatoslav)</p>
+          <p>Data is stored locally in your browser.</p>
+        </footer>
+      </main>
+    </div>
+
+    <dialog class="repair-dialog" id="repairDialog">
+      <form id="repairForm" method="dialog" novalidate>
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow"><span></span> Repair record</p>
+            <h2 id="dialogTitle">New repair</h2>
+          </div>
+          <button class="icon-button dialog-close" id="closeDialogButton" type="button" aria-label="Close dialog">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+
+        <div class="dialog-body">
+          <input id="repairId" type="hidden" />
+
+          <div class="form-grid">
+            <label class="field field-wide">
+              <span>Device model <strong aria-hidden="true">*</strong></span>
+              <input id="deviceInput" name="device" type="text" placeholder="e.g. Samsung Galaxy S22 Ultra" required maxlength="80" />
+              <small class="field-error" id="deviceError"></small>
+            </label>
+
+            <label class="field">
+              <span>Category</span>
+              <select id="categoryInput" name="category">
+                <option>Smartphone</option>
+                <option>Tablet</option>
+                <option>Laptop</option>
+                <option>Desktop PC</option>
+                <option>Game console</option>
+                <option>Other</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Status</span>
+              <select id="statusInput" name="status">
+                <option value="waiting">Waiting</option>
+                <option value="in-progress">In progress</option>
+                <option value="completed">Completed</option>
+              </select>
+            </label>
+
+            <label class="field field-wide">
+              <span>Issue <strong aria-hidden="true">*</strong></span>
+              <input id="issueInput" name="issue" type="text" placeholder="What needs to be repaired?" required maxlength="120" />
+              <small class="field-error" id="issueError"></small>
+            </label>
+
+            <label class="field">
+              <span>Serial number</span>
+              <input id="serialInput" name="serial" type="text" placeholder="Optional" maxlength="60" />
+            </label>
+
+            <label class="field">
+              <span>Received date</span>
+              <input id="receivedInput" name="received" type="date" required />
+            </label>
+
+            <label class="field">
+              <span>Target date</span>
+              <input id="targetInput" name="target" type="date" />
+            </label>
+
+            <label class="field">
+              <span>Labour cost</span>
+              <span class="money-input">
+                <span>€</span>
+                <input id="labourInput" name="labour" type="number" inputmode="decimal" min="0" step="0.01" value="0" />
+              </span>
+            </label>
+          </div>
+
+          <section class="parts-editor" aria-labelledby="partsHeading">
+            <div class="parts-heading">
+              <div>
+                <h3 id="partsHeading">Parts</h3>
+                <p>Add every component used in this repair.</p>
+              </div>
+              <button class="text-button" id="addPartButton" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                Add part
+              </button>
+            </div>
+            <div class="parts-list" id="partsList"></div>
+          </section>
+
+          <label class="field field-wide notes-field">
+            <span>Notes</span>
+            <textarea id="notesInput" name="notes" rows="4" placeholder="Work completed, observations or next steps…" maxlength="600"></textarea>
+          </label>
+
+          <div class="cost-summary">
+            <span>Repair total</span>
+            <strong id="formTotal">€0.00</strong>
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <button class="secondary-button" id="cancelButton" type="button">Cancel</button>
+          <button class="primary-button" type="submit">
+            <span id="submitButtonLabel">Save repair</span>
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="confirm-dialog" id="confirmDialog">
+      <div class="confirm-content">
+        <span class="confirm-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" /></svg>
+        </span>
+        <h2>Delete this repair?</h2>
+        <p>This removes the device and its cost history from this browser.</p>
+        <div class="confirm-actions">
+          <button class="secondary-button" id="cancelDeleteButton" type="button">Keep repair</button>
+          <button class="danger-button" id="confirmDeleteButton" type="button">Delete repair</button>
+        </div>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <template id="partRowTemplate">
+      <div class="part-row">
+        <label class="field part-name-field">
+          <span class="sr-only">Part name</span>
+          <input class="part-name" type="text" placeholder="Part name" maxlength="80" />
+        </label>
+        <label class="field">
+          <span class="sr-only">Part cost</span>
+          <span class="money-input compact">
+            <span>€</span>
+            <input class="part-cost" type="number" inputmode="decimal" min="0" step="0.01" value="0" aria-label="Part cost" />
+          </span>
+        </label>
+        <button class="icon-button remove-part" type="button" aria-label="Remove part">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
+    </template>
+  </body>
+</html>
