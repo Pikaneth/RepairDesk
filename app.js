@@ -1,6 +1,9 @@
 const STORAGE_KEY = "repairdesk.repairs.v1";
 const SETTINGS_KEY = "repairdesk.settings.v1";
 const THEME_KEY = "repairdesk.theme";
+const DELETED_KEY = "repairdesk.deleted.v1";
+const LAST_SYNC_KEY = "repairdesk.cloud.last-sync.v1";
+const MIGRATION_KEY_PREFIX = "repairdesk.cloud.migrated.";
 const SETUP_VERSION = 2;
 
 const { languages, messages } = RepairDeskI18n;
@@ -40,6 +43,19 @@ const elements = Object.fromEntries([
   "finderTitle", "finderContext", "closeFinderButton", "finderSearchForm", "finderQueryInput", "finderCountryLabel",
   "providerLinks", "finderStatus", "pricePanel", "priceChart", "priceSummary", "offerGrid", "googleResultsHost",
   "documentDialog", "documentDialogTitle", "documentSheet", "printDocumentButton", "closeDocumentButton",
+  "cloudStatusCard", "cloudStatusDot", "cloudStatusLabel", "cloudStatusCopy", "accountButton", "mobileAccountButton", "mobileFeedbackButton",
+  "accountButtonLabel", "accountPresence", "feedbackButton", "storageFooter", "authDialog", "authSignInTab", "authSignUpTab",
+  "authForm", "authWorkshopField", "authWorkshopInput", "authEmailInput", "authPasswordInput", "authConfirmField",
+  "authConfirmInput", "authMessage", "authSubmitButton", "authSubmitLabel", "forgotPasswordButton", "localModeButton",
+  "resetRequestForm", "resetEmailInput", "resetMessage", "resetBackButton", "confirmationPanel", "confirmationCopy",
+  "confirmationBackButton", "accountDialog", "closeAccountButton", "accountAvatar", "accountIdentityLabel", "accountEmail", "accountDescription",
+  "lastSyncLabel", "accountSyncBadge", "syncNowButton", "accountSignInButton", "signOutButton", "migrationDialog",
+  "localRepairCount", "useCloudDataButton", "mergeLocalDataButton", "feedbackDialog", "feedbackForm", "closeFeedbackButton",
+  "cancelFeedbackButton", "feedbackTypeInput", "feedbackMessageInput", "feedbackFormMessage", "sendFeedbackButton",
+  "recoveryDialog", "recoveryForm", "recoveryPasswordInput", "recoveryConfirmInput", "recoveryMessage",
+  "adminNavButton", "adminMobileNavButton", "adminView", "refreshAdminButton", "adminStatus", "adminTotalUsers",
+  "adminNewUsersHint", "adminActiveToday", "adminActiveWeekHint", "adminReturningUsers", "adminOpenFeedback",
+  "adminEventsHint", "adminDailyChart", "adminFeedbackInbox",
 ].map((id) => [id, document.getElementById(id)]));
 
 elements.submitButtonLabel = document.getElementById("submitButtonLabel");
@@ -111,6 +127,7 @@ function loadSettings() {
     setupVersion: 0,
     workshop: emptyWorkshop(),
     search: { engineId: "" },
+    updatedAt: new Date(0).toISOString(),
   };
   const stored = readStorage(SETTINGS_KEY);
   if (!stored) return fallback;
@@ -127,6 +144,7 @@ function loadSettings() {
       setupVersion: Number(parsed.setupVersion) || 0,
       workshop: { ...emptyWorkshop(), ...(parsed.workshop || {}) },
       search: { engineId: String(parsed.search?.engineId || "").trim() },
+      updatedAt: String(parsed.updatedAt || new Date(0).toISOString()),
     };
   } catch { return fallback; }
 }
@@ -340,13 +358,57 @@ function loadRepairs() {
 
 let repairs = loadRepairs();
 
+function loadDeletedRepairs() {
+  const stored = readStorage(DELETED_KEY);
+  if (!stored) return [];
+  try {
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.id && item?.deletedAt).slice(-2000) : [];
+  } catch { return []; }
+}
+
+let deletedRepairs = loadDeletedRepairs();
+let cloudConfigured = false;
+let cloudUser = null;
+let cloudRevision = null;
+let cloudSyncTimer = null;
+let cloudSyncInFlight = false;
+let cloudSyncPending = false;
+let cloudSyncState = "local";
+let authMode = "signin";
+let localModeChosen = false;
+let pendingCloudSnapshot = null;
+let cloudProfile = null;
+let adminDashboard = null;
+let adminLoading = false;
+
+function settingsSnapshot() {
+  return {
+    language: currentLanguage,
+    country: currentCountry,
+    currency: currentCurrency,
+    setupComplete: Boolean(settings.setupComplete),
+    setupVersion: Number(settings.setupVersion) || SETUP_VERSION,
+    workshop: { ...emptyWorkshop(), ...(settings.workshop || {}) },
+    search: { engineId: String(settings.search?.engineId || "").trim() },
+    updatedAt: String(settings.updatedAt || new Date().toISOString()),
+  };
+}
+
+function markSettingsChanged() {
+  settings.updatedAt = new Date().toISOString();
+}
+
 function saveRepairs() {
   if (!writeStorage(STORAGE_KEY, JSON.stringify(repairs))) showToast(t("saveFailed"));
+  writeStorage(DELETED_KEY, JSON.stringify(deletedRepairs));
+  scheduleCloudSync();
 }
 
 function saveSettings() {
-  const payload = { language: currentLanguage, country: currentCountry, currency: currentCurrency, setupComplete: true, setupVersion: SETUP_VERSION, workshop: settings.workshop, search: settings.search };
+  const payload = settingsSnapshot();
   writeStorage(SETTINGS_KEY, JSON.stringify(payload));
+  scheduleCloudSync();
 }
 
 function getIssue(repair) { return repair.issueKey ? t(repair.issueKey) : (repair.issue || t("noIssue")); }
@@ -383,8 +445,8 @@ function applyTranslations() {
   const language = languageByCode.get(currentLanguage) || languageByCode.get("en");
   document.documentElement.lang = language.locale;
   document.documentElement.dir = language.dir;
-  document.title = t("pageTitleV012");
-  document.querySelector('meta[name="description"]').content = t("pageDescriptionV012");
+  document.title = t("pageTitleV020");
+  document.querySelector('meta[name="description"]').content = t("pageDescriptionV020");
   document.querySelectorAll("[data-i18n]").forEach((element) => {
     const key = element.dataset.i18n;
     if (key === "heroTitle") setMultilineText(element, t(key)); else element.textContent = t(key);
@@ -397,6 +459,7 @@ function applyTranslations() {
   elements.dialogTitle.textContent = elements.repairId.value ? t("editRepair") : t("newRepair");
   elements.submitButtonLabel.textContent = elements.repairId.value ? t("updateRepair") : t("saveRepair");
   updateCurrencyUI();
+  updateCloudInterface();
   render();
 }
 
@@ -662,6 +725,8 @@ function saveRepairFromForm(event) {
   repairs = existing ? repairs.map((item) => item.id === repair.id ? repair : item) : [repair, ...repairs];
   selectedHistoryId = repair.id;
   saveRepairs();
+  RepairDeskCloud?.track(existing ? "repair_updated" : "repair_created", { category: repair.category, status: repair.status }).catch(() => {});
+  if (existing?.status !== "completed" && repair.status === "completed") RepairDeskCloud?.track("repair_completed", { category: repair.category }).catch(() => {});
   render();
   closeRepairDialog();
   showToast(t(existing ? "updated" : "added"));
@@ -675,10 +740,12 @@ function requestDelete(repairId) {
 
 function deletePendingRepair() {
   if (!pendingDeleteId) return;
+  deletedRepairs = [...deletedRepairs.filter((item) => item.id !== pendingDeleteId), { id: pendingDeleteId, deletedAt: new Date().toISOString() }].slice(-2000);
   repairs = repairs.filter((repair) => repair.id !== pendingDeleteId);
   if (selectedHistoryId === pendingDeleteId) selectedHistoryId = repairs[0]?.id || null;
   pendingDeleteId = null;
   saveRepairs();
+  RepairDeskCloud?.track("repair_deleted").catch(() => {});
   render();
   elements.confirmDialog.close();
   showToast(t("deleted"));
@@ -697,7 +764,8 @@ function showToast(message) {
 }
 
 function showView(view, repairId = null) {
-  if (!["overview", "history", "settings"].includes(view)) view = "overview";
+  const allowedViews = ["overview", "history", "settings", ...(cloudProfile?.is_admin ? ["admin"] : [])];
+  if (!allowedViews.includes(view)) view = "overview";
   activeView = view;
   if (repairId) selectedHistoryId = repairId;
   document.querySelectorAll(".app-view").forEach((section) => {
@@ -708,6 +776,8 @@ function showView(view, repairId = null) {
   document.querySelectorAll("[data-view-target]").forEach((button) => button.classList.toggle("active", button.dataset.viewTarget === view));
   if (view === "history") renderHistory();
   if (view === "settings") populateSettingsForm();
+  if (view === "admin") renderAdminDashboard();
+  RepairDeskCloud?.track("view_opened", { view }).catch(() => {});
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -821,6 +891,7 @@ function saveSettingsForm(event) {
     taxRate: Math.min(100, toAmount(elements.taxRateInput.value)), paymentDetails: elements.paymentDetailsInput.value.trim(),
   };
   settings.search.engineId = elements.searchEngineIdInput.value.trim();
+  markSettingsChanged();
   saveSettings();
   applyTranslations();
   populateSettingsForm();
@@ -1347,9 +1418,13 @@ function finishSetup() {
   settings.currency = currentCurrency;
   settings.setupComplete = true;
   settings.setupVersion = SETUP_VERSION;
+  markSettingsChanged();
   saveSettings();
   applyTranslations();
   elements.setupDialog.close();
+  RepairDeskCloud?.updateProfile({ workshopName: settings.workshop.name, language: currentLanguage, country: currentCountry, currency: currentCurrency, onboardingCompleted: true }).catch(() => {});
+  RepairDeskCloud?.track("onboarding_completed", { language: currentLanguage, country: currentCountry }).catch(() => {});
+  if (cloudConfigured && !cloudUser && !localModeChosen) openAuthDialog("signup");
 }
 
 function closeDialogFromBackdrop(event) {
@@ -1359,7 +1434,694 @@ function closeDialogFromBackdrop(event) {
   if (outside) dialog.close();
 }
 
+function parseStoredArray(key) {
+  const value = readStorage(key);
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+function newestDate(left, right) {
+  const leftTime = new Date(left || 0).getTime() || 0;
+  const rightTime = new Date(right || 0).getTime() || 0;
+  return leftTime >= rightTime ? left : right;
+}
+
+function mergeDeletedLists(left = [], right = []) {
+  const merged = new Map();
+  [...left, ...right].forEach((item) => {
+    if (!item?.id || !item?.deletedAt) return;
+    const existing = merged.get(item.id);
+    if (!existing || newestDate(item.deletedAt, existing.deletedAt) === item.deletedAt) merged.set(item.id, { id: String(item.id), deletedAt: String(item.deletedAt) });
+  });
+  return [...merged.values()].sort((a, b) => new Date(a.deletedAt) - new Date(b.deletedAt)).slice(-2000);
+}
+
+function mergeRepairLists(left = [], right = [], tombstones = []) {
+  const merged = new Map();
+  [...left, ...right].forEach((raw) => {
+    if (!raw?.id) return;
+    const repair = normalizeRepair(raw);
+    const existing = merged.get(repair.id);
+    if (!existing || newestDate(repair.updatedAt, existing.updatedAt) === repair.updatedAt) merged.set(repair.id, repair);
+  });
+  const deletedById = new Map(tombstones.map((item) => [item.id, item.deletedAt]));
+  return [...merged.values()].filter((repair) => {
+    const deletedAt = deletedById.get(repair.id);
+    return !deletedAt || new Date(repair.updatedAt || 0) > new Date(deletedAt);
+  }).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+}
+
+function normaliseSettingsSnapshot(raw = {}) {
+  const language = languageByCode.has(raw.language) ? raw.language : currentLanguage;
+  const country = countryCodes.has(raw.country) ? raw.country : detectCountry(language);
+  const currency = currencies.includes(raw.currency) ? raw.currency : detectCurrency(country);
+  return {
+    language,
+    country,
+    currency,
+    setupComplete: Boolean(raw.setupComplete),
+    setupVersion: Number(raw.setupVersion) || 0,
+    workshop: { ...emptyWorkshop(), ...(raw.workshop || {}) },
+    search: { engineId: String(raw.search?.engineId || "").trim() },
+    updatedAt: String(raw.updatedAt || new Date(0).toISOString()),
+  };
+}
+
+function chooseNewestSettings(left, right) {
+  const leftSettings = normaliseSettingsSnapshot(left || {});
+  const rightSettings = normaliseSettingsSnapshot(right || {});
+  return newestDate(leftSettings.updatedAt, rightSettings.updatedAt) === leftSettings.updatedAt ? leftSettings : rightSettings;
+}
+
+function applySnapshot(snapshot) {
+  const nextSettings = normaliseSettingsSnapshot(snapshot?.settings || {});
+  repairs = Array.isArray(snapshot?.repairs) ? snapshot.repairs.map(normalizeRepair) : [];
+  deletedRepairs = Array.isArray(snapshot?.deleted_repairs) ? snapshot.deleted_repairs : [];
+  Object.assign(settings, nextSettings);
+  currentLanguage = nextSettings.language;
+  currentCountry = nextSettings.country;
+  currentCurrency = nextSettings.currency;
+  writeStorage(STORAGE_KEY, JSON.stringify(repairs));
+  writeStorage(SETTINGS_KEY, JSON.stringify(nextSettings));
+  writeStorage(DELETED_KEY, JSON.stringify(deletedRepairs));
+  applyTranslations();
+  populateSettingsForm();
+  render();
+}
+
+function migrationKey(user = cloudUser) {
+  return user?.id ? `${MIGRATION_KEY_PREFIX}${user.id}` : "";
+}
+
+function localRepairsWereEdited() {
+  return Boolean(readStorage(STORAGE_KEY)) && parseStoredArray(STORAGE_KEY).length > 0;
+}
+
+function formatSyncTime(value) {
+  if (!value) return t("neverSynced");
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? t("neverSynced") : dateTimeFormatter.format(date);
+}
+
+function setCloudState(nextState) {
+  cloudSyncState = nextState;
+  updateCloudInterface();
+}
+
+function updateCloudInterface() {
+  if (!elements.cloudStatusCard) return;
+  const online = typeof navigator.onLine === "boolean" ? navigator.onLine : true;
+  let labelKey = "cloudLocal";
+  let copyKey = "cloudLocalCopy";
+  let visualState = "local";
+  if (cloudUser && cloudSyncState === "syncing") {
+    labelKey = "cloudSyncing";
+    copyKey = "cloudReadyCopy";
+    visualState = "syncing";
+  } else if (cloudUser && (!online || cloudSyncState === "offline")) {
+    labelKey = "cloudOffline";
+    copyKey = "cloudErrorCopy";
+    visualState = "offline";
+  } else if (cloudUser && cloudSyncState === "error") {
+    labelKey = "cloudOffline";
+    copyKey = "cloudErrorCopy";
+    visualState = "error";
+  } else if (cloudUser) {
+    labelKey = "cloudReady";
+    copyKey = "cloudReadyCopy";
+    visualState = "ready";
+  }
+  elements.cloudStatusCard.dataset.state = visualState;
+  elements.cloudStatusLabel.textContent = t(labelKey);
+  elements.cloudStatusCopy.textContent = t(copyKey);
+  elements.accountPresence.classList.toggle("online", Boolean(cloudUser && online));
+  elements.accountIdentityLabel.textContent = t(cloudUser ? "signedInAs" : "workspaceMode");
+  elements.accountEmail.textContent = cloudUser?.email || t("cloudLocal");
+  elements.accountAvatar.textContent = String(cloudUser?.email || settings.workshop.name || "P").trim().charAt(0).toUpperCase() || "P";
+  elements.accountDescription.textContent = t(cloudUser ? "accountCloudCopy" : "localModeCopy");
+  elements.accountSyncBadge.textContent = t(labelKey);
+  elements.lastSyncLabel.textContent = formatSyncTime(readStorage(LAST_SYNC_KEY));
+  elements.syncNowButton.hidden = !cloudUser;
+  elements.signOutButton.hidden = !cloudUser;
+  elements.accountSignInButton.hidden = Boolean(cloudUser);
+  elements.storageFooter.textContent = t(cloudUser ? "cloudFooter" : "localFooterV020");
+  const adminVisible = Boolean(cloudUser && cloudProfile?.is_admin);
+  elements.adminNavButton.hidden = !adminVisible;
+  elements.adminMobileNavButton.hidden = !adminVisible;
+  if (!adminVisible && activeView === "admin") showView("overview");
+}
+
+function scheduleCloudSync(delay = 700) {
+  if (!cloudConfigured || !cloudUser) return;
+  clearTimeout(cloudSyncTimer);
+  cloudSyncPending = true;
+  if (typeof navigator.onLine === "boolean" && !navigator.onLine) {
+    setCloudState("offline");
+    return;
+  }
+  cloudSyncTimer = setTimeout(() => performCloudSync(), delay);
+}
+
+async function resolveCloudConflict(remoteSnapshot) {
+  const mergedDeleted = mergeDeletedLists(deletedRepairs, remoteSnapshot?.deleted_repairs || []);
+  const mergedRepairs = mergeRepairLists(repairs, remoteSnapshot?.repairs || [], mergedDeleted);
+  const mergedSettings = chooseNewestSettings(settingsSnapshot(), remoteSnapshot?.settings || {});
+  applySnapshot({ repairs: mergedRepairs, settings: mergedSettings, deleted_repairs: mergedDeleted });
+  cloudRevision = Number(remoteSnapshot?.revision) || null;
+}
+
+async function performCloudSync({ notify = false, retry = true } = {}) {
+  if (!cloudConfigured || !cloudUser) return false;
+  if (cloudSyncInFlight) {
+    cloudSyncPending = true;
+    return false;
+  }
+  if (typeof navigator.onLine === "boolean" && !navigator.onLine) {
+    cloudSyncPending = true;
+    setCloudState("offline");
+    return false;
+  }
+  cloudSyncInFlight = true;
+  cloudSyncPending = false;
+  setCloudState("syncing");
+  try {
+    let result = await RepairDeskCloud.saveSnapshot({ repairs, settings: settingsSnapshot(), deletedRepairs, expectedRevision: cloudRevision });
+    if (result?.conflict && retry) {
+      const remote = await RepairDeskCloud.loadSnapshot();
+      await resolveCloudConflict(remote);
+      result = await RepairDeskCloud.saveSnapshot({ repairs, settings: settingsSnapshot(), deletedRepairs, expectedRevision: cloudRevision });
+      showToast(t("syncConflictResolved"));
+    }
+    if (!result?.ok) throw new Error("Cloud revision conflict.");
+    cloudRevision = Number(result.revision) || cloudRevision;
+    const syncedAt = result.updated_at || new Date().toISOString();
+    writeStorage(LAST_SYNC_KEY, syncedAt);
+    setCloudState("ready");
+    if (notify) showToast(t("syncSuccess"));
+    return true;
+  } catch (error) {
+    cloudSyncPending = true;
+    setCloudState("error");
+    if (notify) showToast(t("syncFailed"));
+    return false;
+  } finally {
+    cloudSyncInFlight = false;
+    if (cloudSyncPending && (typeof navigator.onLine !== "boolean" || navigator.onLine)) scheduleCloudSync(1600);
+  }
+}
+
+function openAuthDialog(mode = "signin") {
+  setAuthMode(mode);
+  elements.authMessage.textContent = cloudConfigured ? "" : t("cloudNotConfigured");
+  elements.authMessage.classList.toggle("success", false);
+  elements.resetRequestForm.hidden = true;
+  elements.confirmationPanel.hidden = true;
+  elements.authForm.hidden = false;
+  document.querySelector(".auth-tabs").hidden = false;
+  document.querySelector(".auth-links").hidden = false;
+  if (!elements.authDialog.open) elements.authDialog.showModal();
+  requestAnimationFrame(() => elements.authEmailInput.focus());
+}
+
+function setAuthMode(mode) {
+  authMode = mode === "signup" ? "signup" : "signin";
+  const signingUp = authMode === "signup";
+  elements.authSignInTab.classList.toggle("active", !signingUp);
+  elements.authSignUpTab.classList.toggle("active", signingUp);
+  elements.authSignInTab.setAttribute("aria-selected", String(!signingUp));
+  elements.authSignUpTab.setAttribute("aria-selected", String(signingUp));
+  elements.authWorkshopField.hidden = !signingUp;
+  elements.authConfirmField.hidden = !signingUp;
+  elements.authPasswordInput.autocomplete = signingUp ? "new-password" : "current-password";
+  elements.authSubmitLabel.textContent = t(signingUp ? "createAccount" : "signIn");
+  elements.authMessage.textContent = "";
+}
+
+function setFormBusy(form, busy) {
+  form.querySelectorAll("button, input, select, textarea").forEach((control) => { control.disabled = busy; });
+}
+
+function validEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim());
+}
+
+async function submitAuth(event) {
+  event.preventDefault();
+  const email = elements.authEmailInput.value.trim();
+  const password = elements.authPasswordInput.value;
+  elements.authMessage.classList.remove("success");
+  if (!cloudConfigured) {
+    elements.authMessage.textContent = t("cloudNotConfigured");
+    return;
+  }
+  if (!validEmail(email)) {
+    elements.authMessage.textContent = t("authInvalidEmail");
+    return;
+  }
+  if (password.length < 8) {
+    elements.authMessage.textContent = t("authPasswordShort");
+    return;
+  }
+  if (authMode === "signup" && !elements.authWorkshopInput.value.trim()) {
+    elements.authMessage.textContent = t("authWorkshopRequired");
+    return;
+  }
+  if (authMode === "signup" && password !== elements.authConfirmInput.value) {
+    elements.authMessage.textContent = t("authPasswordsMismatch");
+    return;
+  }
+  setFormBusy(elements.authForm, true);
+  elements.authMessage.textContent = t("authWorking");
+  try {
+    if (authMode === "signup") {
+      settings.workshop.name = elements.authWorkshopInput.value.trim();
+      markSettingsChanged();
+      saveSettings();
+      const data = await RepairDeskCloud.signUp({ email, password, workshopName: settings.workshop.name, language: currentLanguage, country: currentCountry, currency: currentCurrency });
+      if (!data.session) {
+        elements.authForm.hidden = true;
+        document.querySelector(".auth-tabs").hidden = true;
+        document.querySelector(".auth-links").hidden = true;
+        elements.confirmationCopy.textContent = t("emailConfirmationCopy", { email });
+        elements.confirmationPanel.hidden = false;
+      } else await completeCloudSignIn(data.user, "registered");
+    } else {
+      const data = await RepairDeskCloud.signIn(email, password);
+      await completeCloudSignIn(data.user, "signed_in");
+    }
+  } catch (error) {
+    elements.authMessage.textContent = error?.message || t("authGenericError");
+  } finally {
+    setFormBusy(elements.authForm, false);
+  }
+}
+
+function showResetRequest() {
+  elements.authForm.hidden = true;
+  document.querySelector(".auth-tabs").hidden = true;
+  document.querySelector(".auth-links").hidden = true;
+  elements.confirmationPanel.hidden = true;
+  elements.resetRequestForm.hidden = false;
+  elements.resetEmailInput.value = elements.authEmailInput.value;
+  elements.resetMessage.textContent = "";
+  elements.resetEmailInput.focus();
+}
+
+function hideResetRequest() {
+  elements.resetRequestForm.hidden = true;
+  elements.authForm.hidden = false;
+  document.querySelector(".auth-tabs").hidden = false;
+  document.querySelector(".auth-links").hidden = false;
+}
+
+async function submitResetRequest(event) {
+  event.preventDefault();
+  const email = elements.resetEmailInput.value.trim();
+  elements.resetMessage.classList.remove("success");
+  if (!validEmail(email)) {
+    elements.resetMessage.textContent = t("authInvalidEmail");
+    return;
+  }
+  setFormBusy(elements.resetRequestForm, true);
+  try {
+    await RepairDeskCloud.sendPasswordReset(email);
+    elements.resetMessage.textContent = t("resetSent");
+    elements.resetMessage.classList.add("success");
+  } catch (error) {
+    elements.resetMessage.textContent = error?.message || t("authGenericError");
+  } finally {
+    setFormBusy(elements.resetRequestForm, false);
+  }
+}
+
+function continueLocally() {
+  localModeChosen = true;
+  if (elements.authDialog.open) elements.authDialog.close();
+  setCloudState("local");
+  if (!settings.setupComplete) openSetup("language");
+  else if (settings.setupVersion < SETUP_VERSION) openSetup("country");
+}
+
+async function loadCloudWorkspace(user) {
+  if (!user) return;
+  cloudUser = user;
+  setCloudState("syncing");
+  const [snapshot, profile] = await Promise.all([RepairDeskCloud.loadSnapshot(), RepairDeskCloud.loadProfile()]);
+  cloudProfile = profile;
+  adminDashboard = null;
+  updateCloudInterface();
+  const migrated = Boolean(readStorage(migrationKey(user)));
+  if (localRepairsWereEdited() && !migrated) {
+    pendingCloudSnapshot = snapshot;
+    elements.localRepairCount.textContent = t("localRepairsFound", { count: parseStoredArray(STORAGE_KEY).length });
+    elements.useCloudDataButton.hidden = !snapshot;
+    if (!elements.migrationDialog.open) elements.migrationDialog.showModal();
+    setCloudState("ready");
+  } else if (snapshot) {
+    cloudRevision = Number(snapshot.revision) || null;
+    applySnapshot(snapshot);
+    writeStorage(LAST_SYNC_KEY, snapshot.updated_at || new Date().toISOString());
+    setCloudState("ready");
+  } else {
+    cloudRevision = null;
+    await performCloudSync();
+  }
+  await RepairDeskCloud.updateProfile({ workshopName: settings.workshop.name, language: currentLanguage, country: currentCountry, currency: currentCurrency, onboardingCompleted: settings.setupComplete }).catch(() => {});
+  await RepairDeskCloud.track("app_open", { language: currentLanguage, country: currentCountry, local_data: localRepairsWereEdited() });
+  updateCloudInterface();
+}
+
+async function completeCloudSignIn(user, authEvent = "") {
+  if (!user) return;
+  if (elements.authDialog.open) elements.authDialog.close();
+  try {
+    await loadCloudWorkspace(user);
+    if (authEvent) await RepairDeskCloud.track(`account_${authEvent}`);
+    if (!settings.setupComplete && !elements.migrationDialog.open) openSetup("language");
+    else if (settings.setupVersion < SETUP_VERSION && !elements.migrationDialog.open) openSetup("country");
+  } catch {
+    cloudUser = user;
+    setCloudState("error");
+    showToast(t("syncFailed"));
+  }
+}
+
+async function handleAuthStateChange(event, session) {
+  if (event === "PASSWORD_RECOVERY") {
+    if (!elements.recoveryDialog.open) elements.recoveryDialog.showModal();
+    return;
+  }
+  if (event === "SIGNED_OUT") {
+    cloudUser = null;
+    cloudProfile = null;
+    adminDashboard = null;
+    cloudRevision = null;
+    pendingCloudSnapshot = null;
+    setCloudState("local");
+    return;
+  }
+  if (event === "SIGNED_IN" && session?.user && cloudUser?.id !== session.user.id) await completeCloudSignIn(session.user);
+}
+
+async function mergeLocalIntoCloud() {
+  setFormBusy(elements.migrationDialog, true);
+  try {
+    const remote = pendingCloudSnapshot;
+    const mergedDeleted = mergeDeletedLists(deletedRepairs, remote?.deleted_repairs || []);
+    const mergedRepairs = mergeRepairLists(repairs, remote?.repairs || [], mergedDeleted);
+    const mergedSettings = chooseNewestSettings(settingsSnapshot(), remote?.settings || {});
+    cloudRevision = Number(remote?.revision) || null;
+    applySnapshot({ repairs: mergedRepairs, settings: mergedSettings, deleted_repairs: mergedDeleted });
+    const success = await performCloudSync({ notify: true });
+    if (!success) return;
+    writeStorage(migrationKey(), "1");
+    pendingCloudSnapshot = null;
+    elements.migrationDialog.close();
+    if (!settings.setupComplete) openSetup("language");
+  } finally {
+    setFormBusy(elements.migrationDialog, false);
+  }
+}
+
+async function useCloudSnapshot() {
+  const remote = pendingCloudSnapshot;
+  if (!remote) return;
+  setFormBusy(elements.migrationDialog, true);
+  try {
+    cloudRevision = Number(remote.revision) || null;
+    applySnapshot(remote);
+    writeStorage(LAST_SYNC_KEY, remote.updated_at || new Date().toISOString());
+    updateCloudInterface();
+    writeStorage(migrationKey(), "1");
+    pendingCloudSnapshot = null;
+    elements.migrationDialog.close();
+    if (!settings.setupComplete) openSetup("language");
+  } finally {
+    setFormBusy(elements.migrationDialog, false);
+  }
+}
+
+function adminCount(value) {
+  return new Intl.NumberFormat(currentLocale()).format(Number(value) || 0);
+}
+
+function renderAdminChart(daily = []) {
+  elements.adminDailyChart.replaceChildren();
+  if (!daily.length) {
+    const empty = document.createElement("p");
+    empty.className = "admin-empty";
+    empty.textContent = t("noAnalyticsYet");
+    elements.adminDailyChart.append(empty);
+    return;
+  }
+  const byDay = new Map(daily.map((row) => [String(row.day || "").slice(0, 10), row]));
+  const days = [];
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  for (let offset = 29; offset >= 0; offset -= 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - offset);
+    const key = date.toISOString().slice(0, 10);
+    days.push({ date, key, ...(byDay.get(key) || {}) });
+  }
+  const maxUsers = Math.max(1, ...days.map((row) => Number(row.active_users) || 0));
+  const maxEvents = Math.max(1, ...days.map((row) => Number(row.events) || 0));
+  const compactDate = new Intl.DateTimeFormat(currentLocale(), { day: "numeric", month: "short" });
+  days.forEach((row, index) => {
+    const users = Number(row.active_users) || 0;
+    const events = Number(row.events) || 0;
+    const item = document.createElement("div");
+    item.className = "admin-day";
+    item.title = `${compactDate.format(row.date)} · ${t("activeUsers")}: ${users} · ${t("events")}: ${events}`;
+    const userHeight = users ? Math.max(5, users / maxUsers * 100) : 0;
+    const eventHeight = events ? Math.max(5, events / maxEvents * 100) : 0;
+    const label = index % 5 === 0 || index === days.length - 1 ? compactDate.format(row.date) : "·";
+    item.innerHTML = `<div class="admin-day-bars"><i class="users" style="height:${userHeight}%;${users ? "" : "min-height:0"}"></i><i class="events" style="height:${eventHeight}%;${events ? "" : "min-height:0"}"></i></div><time datetime="${escapeHtml(row.key)}">${escapeHtml(label)}</time>`;
+    elements.adminDailyChart.append(item);
+  });
+}
+
+function feedbackStatusLabel(status) {
+  const key = { new: "feedbackStatusNew", reviewing: "feedbackStatusReviewing", planned: "feedbackStatusPlanned", resolved: "feedbackStatusResolved", closed: "feedbackStatusClosed" }[status];
+  return t(key || "feedbackStatusNew");
+}
+
+function renderAdminFeedback(feedback = []) {
+  elements.adminFeedbackInbox.replaceChildren();
+  if (!feedback.length) {
+    const empty = document.createElement("p");
+    empty.className = "admin-empty";
+    empty.textContent = t("noFeedbackYet");
+    elements.adminFeedbackInbox.append(empty);
+    return;
+  }
+  const statuses = ["new", "reviewing", "planned", "resolved", "closed"];
+  feedback.forEach((item) => {
+    const article = document.createElement("article");
+    article.className = "admin-feedback-item";
+    article.dataset.feedbackId = String(item.id);
+    const typeKey = { idea: "feedbackIdea", bug: "feedbackBug", other: "feedbackOther" }[item.type] || "feedbackOther";
+    const meta = [item.workshop_name || t("defaultWorkshopName"), item.page, item.app_version ? `v${item.app_version}` : ""].filter(Boolean).join(" · ");
+    const options = statuses.map((status) => `<option value="${status}"${status === item.status ? " selected" : ""}>${escapeHtml(feedbackStatusLabel(status))}</option>`).join("");
+    article.innerHTML = `<div><header><span class="admin-feedback-type">${escapeHtml(t(typeKey))}</span><time datetime="${escapeHtml(item.created_at || "")}">${escapeHtml(formatDateTime(item.created_at))}</time></header><p>${escapeHtml(item.message || "")}</p><span class="admin-feedback-meta">${escapeHtml(meta)}</span></div><select class="admin-feedback-status" data-feedback-status aria-label="${escapeHtml(t("feedbackStatus"))}">${options}</select>`;
+    elements.adminFeedbackInbox.append(article);
+  });
+}
+
+function renderAdminData() {
+  const totals = adminDashboard?.totals || {};
+  elements.adminTotalUsers.textContent = adminCount(totals.total_users);
+  elements.adminNewUsersHint.textContent = t("adminNewUsers", { count: adminCount(totals.new_users_30d) });
+  elements.adminActiveToday.textContent = adminCount(totals.active_today);
+  elements.adminActiveWeekHint.textContent = t("adminActiveWeek", { count: adminCount(totals.active_7d) });
+  elements.adminReturningUsers.textContent = adminCount(totals.returning_30d);
+  elements.adminOpenFeedback.textContent = adminCount(totals.open_feedback);
+  elements.adminEventsHint.textContent = t("adminEvents30d", { count: adminCount(totals.events_30d) });
+  renderAdminChart(Array.isArray(adminDashboard?.daily) ? adminDashboard.daily : []);
+  renderAdminFeedback(Array.isArray(adminDashboard?.feedback) ? adminDashboard.feedback : []);
+}
+
+async function renderAdminDashboard(force = false) {
+  if (!cloudProfile?.is_admin || adminLoading) return;
+  if (adminDashboard && !force) {
+    renderAdminData();
+    return;
+  }
+  adminLoading = true;
+  elements.refreshAdminButton.disabled = true;
+  elements.adminView.setAttribute("aria-busy", "true");
+  elements.adminStatus.classList.remove("error");
+  elements.adminStatus.textContent = t("analyticsLoading");
+  try {
+    adminDashboard = await RepairDeskCloud.loadAdminDashboard();
+    renderAdminData();
+    elements.adminStatus.textContent = t("analyticsUpdated", { time: formatSyncTime(adminDashboard?.generated_at) });
+  } catch {
+    elements.adminStatus.textContent = t("analyticsLoadFailed");
+    elements.adminStatus.classList.add("error");
+  } finally {
+    adminLoading = false;
+    elements.refreshAdminButton.disabled = false;
+    elements.adminView.setAttribute("aria-busy", "false");
+  }
+}
+
+async function changeFeedbackStatus(select) {
+  const article = select.closest("[data-feedback-id]");
+  const item = adminDashboard?.feedback?.find((entry) => String(entry.id) === article?.dataset.feedbackId);
+  if (!item) return;
+  const previous = item.status;
+  const next = select.value;
+  if (previous === next) return;
+  select.disabled = true;
+  try {
+    await RepairDeskCloud.updateFeedbackStatus(item.id, next);
+    item.status = next;
+    const open = new Set(["new", "reviewing", "planned"]);
+    if (open.has(previous) !== open.has(next)) adminDashboard.totals.open_feedback = Math.max(0, Number(adminDashboard.totals.open_feedback) + (open.has(next) ? 1 : -1));
+    renderAdminData();
+    showToast(t("feedbackStatusUpdated"));
+  } catch {
+    select.value = previous;
+    showToast(t("feedbackStatusFailed"));
+  } finally {
+    select.disabled = false;
+  }
+}
+
+function openAccountDialog() {
+  updateCloudInterface();
+  if (!elements.accountDialog.open) elements.accountDialog.showModal();
+}
+
+async function signOutAccount() {
+  setFormBusy(elements.accountDialog, true);
+  try {
+    await performCloudSync();
+    await RepairDeskCloud.signOut();
+    elements.accountDialog.close();
+    showToast(t("cloudLocal"));
+  } catch (error) {
+    showToast(error?.message || t("authGenericError"));
+  } finally {
+    setFormBusy(elements.accountDialog, false);
+  }
+}
+
+function openFeedbackDialog() {
+  if (!cloudUser) {
+    showToast(t("feedbackSignInRequired"));
+    openAuthDialog("signin");
+    return;
+  }
+  elements.feedbackFormMessage.textContent = "";
+  if (!elements.feedbackDialog.open) elements.feedbackDialog.showModal();
+  elements.feedbackMessageInput.focus();
+}
+
+async function submitFeedback(event) {
+  event.preventDefault();
+  const message = elements.feedbackMessageInput.value.trim();
+  elements.feedbackFormMessage.classList.remove("success");
+  if (message.length < 3) {
+    elements.feedbackFormMessage.textContent = t("feedbackMessageRequired");
+    return;
+  }
+  setFormBusy(elements.feedbackForm, true);
+  try {
+    await RepairDeskCloud.submitFeedback(elements.feedbackTypeInput.value, message, activeView);
+    elements.feedbackFormMessage.textContent = t("feedbackSent");
+    elements.feedbackFormMessage.classList.add("success");
+    elements.feedbackMessageInput.value = "";
+    setTimeout(() => elements.feedbackDialog.close(), 700);
+  } catch (error) {
+    elements.feedbackFormMessage.textContent = error?.message || t("authGenericError");
+  } finally {
+    setFormBusy(elements.feedbackForm, false);
+  }
+}
+
+async function submitRecovery(event) {
+  event.preventDefault();
+  const password = elements.recoveryPasswordInput.value;
+  if (password.length < 8) {
+    elements.recoveryMessage.textContent = t("authPasswordShort");
+    return;
+  }
+  if (password !== elements.recoveryConfirmInput.value) {
+    elements.recoveryMessage.textContent = t("authPasswordsMismatch");
+    return;
+  }
+  setFormBusy(elements.recoveryForm, true);
+  try {
+    await RepairDeskCloud.updatePassword(password);
+    elements.recoveryMessage.textContent = t("passwordUpdated");
+    elements.recoveryMessage.classList.add("success");
+    setTimeout(() => elements.recoveryDialog.close(), 900);
+  } catch (error) {
+    elements.recoveryMessage.textContent = error?.message || t("authGenericError");
+  } finally {
+    setFormBusy(elements.recoveryForm, false);
+  }
+}
+
+function togglePasswordVisibility(button) {
+  const input = document.getElementById(button.dataset.passwordTarget);
+  if (!input) return;
+  input.type = input.type === "password" ? "text" : "password";
+}
+
+async function initialiseApplication() {
+  initialiseTheme();
+  refreshFormatters();
+  applyTranslations();
+  try {
+    const result = await RepairDeskCloud.init(handleAuthStateChange);
+    cloudConfigured = Boolean(result.configured);
+    if (result.user) await completeCloudSignIn(result.user);
+    else if (!settings.setupComplete) openSetup("language");
+    else if (settings.setupVersion < SETUP_VERSION) openSetup("country");
+    else if (cloudConfigured && !localModeChosen) openAuthDialog("signin");
+    else continueLocally();
+    if (new URLSearchParams(window.location.search).get("recovery") === "1" && result.user && !elements.recoveryDialog.open) elements.recoveryDialog.showModal();
+  } catch {
+    cloudConfigured = false;
+    continueLocally();
+    showToast(t("cloudNotConfigured"));
+  }
+}
+
 elements.addRepairButton.addEventListener("click", openNewRepair);
+elements.accountButton.addEventListener("click", openAccountDialog);
+elements.mobileAccountButton.addEventListener("click", openAccountDialog);
+elements.feedbackButton.addEventListener("click", openFeedbackDialog);
+elements.mobileFeedbackButton.addEventListener("click", openFeedbackDialog);
+elements.refreshAdminButton.addEventListener("click", () => renderAdminDashboard(true));
+elements.adminFeedbackInbox.addEventListener("change", (event) => { if (event.target.matches("[data-feedback-status]")) changeFeedbackStatus(event.target); });
+elements.closeAccountButton.addEventListener("click", () => elements.accountDialog.close());
+elements.accountSignInButton.addEventListener("click", () => { elements.accountDialog.close(); openAuthDialog("signin"); });
+elements.syncNowButton.addEventListener("click", () => performCloudSync({ notify: true }));
+elements.signOutButton.addEventListener("click", signOutAccount);
+elements.authSignInTab.addEventListener("click", () => setAuthMode("signin"));
+elements.authSignUpTab.addEventListener("click", () => setAuthMode("signup"));
+elements.authForm.addEventListener("submit", submitAuth);
+elements.forgotPasswordButton.addEventListener("click", showResetRequest);
+elements.localModeButton.addEventListener("click", continueLocally);
+elements.resetBackButton.addEventListener("click", hideResetRequest);
+elements.resetRequestForm.addEventListener("submit", submitResetRequest);
+elements.confirmationBackButton.addEventListener("click", () => { elements.confirmationPanel.hidden = true; elements.authForm.hidden = false; document.querySelector(".auth-tabs").hidden = false; document.querySelector(".auth-links").hidden = false; setAuthMode("signin"); });
+elements.mergeLocalDataButton.addEventListener("click", mergeLocalIntoCloud);
+elements.useCloudDataButton.addEventListener("click", useCloudSnapshot);
+elements.feedbackForm.addEventListener("submit", submitFeedback);
+elements.closeFeedbackButton.addEventListener("click", () => elements.feedbackDialog.close());
+elements.cancelFeedbackButton.addEventListener("click", () => elements.feedbackDialog.close());
+elements.recoveryForm.addEventListener("submit", submitRecovery);
+elements.setupDialog.addEventListener("cancel", (event) => { if (!settings.setupComplete) event.preventDefault(); });
+elements.migrationDialog.addEventListener("cancel", (event) => event.preventDefault());
+document.querySelectorAll("[data-password-target]").forEach((button) => button.addEventListener("click", () => togglePasswordVisibility(button)));
 elements.emptyAddButton.addEventListener("click", openNewRepair);
 elements.closeDialogButton.addEventListener("click", closeRepairDialog);
 elements.cancelButton.addEventListener("click", closeRepairDialog);
@@ -1480,9 +2242,7 @@ elements.repairDialog.addEventListener("close", resetFormErrors);
 elements.confirmDialog.addEventListener("close", () => { pendingDeleteId = null; });
 elements.documentDialog.addEventListener("click", closeDialogFromBackdrop);
 window.addEventListener("afterprint", () => document.body.classList.remove("printing-document"));
+window.addEventListener("online", () => { if (cloudUser) scheduleCloudSync(100); updateCloudInterface(); });
+window.addEventListener("offline", () => { if (cloudUser) setCloudState("offline"); });
 
-initialiseTheme();
-refreshFormatters();
-applyTranslations();
-if (!settings.setupComplete) openSetup("language");
-else if (settings.setupVersion < SETUP_VERSION) openSetup("country");
+initialiseApplication();

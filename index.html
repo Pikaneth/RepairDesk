@@ -3,14 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="RepairDesk is a workshop dashboard for repairs, parts, orders and documents." />
+    <meta name="description" content="RepairDesk is a cloud workshop manager for repairs, parts, customers and documents." />
     <meta name="theme-color" content="#f4f2ed" />
-    <title>RepairDesk — Workshop repair manager</title>
+    <title>RepairDesk — Cloud workshop manager</title>
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
+    <script src="config.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     <script src="i18n.js" defer></script>
     <script src="i18n-v012.js" defer></script>
+    <script src="i18n-v020.js" defer></script>
     <script src="catalog.js" defer></script>
+    <script src="cloud.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -18,17 +22,20 @@
       <aside class="sidebar" aria-label="Primary navigation">
         <button class="brand brand-button" type="button" data-view-target="overview" aria-label="RepairDesk home">
           <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L3.5 17.5a2.1 2.1 0 0 0 3 3l5.4-5.4a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" /></svg></span>
-          <span>RepairDesk</span><span class="version-badge">0.1.2</span>
+          <span>RepairDesk</span><span class="version-badge">0.2.0</span>
         </button>
 
         <nav class="nav-list">
           <button class="nav-item active" type="button" data-view-target="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z" /></svg><span data-i18n="overview">Overview</span></button>
           <button class="nav-item" type="button" data-view-target="history"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5l3 2M3.6 9A9 9 0 1 1 3 12M3 5v4h4" /></svg><span data-i18n="history">History</span></button>
           <button class="nav-item" type="button" data-view-target="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM19.4 15l1.1 2-2 3.4-2.3-.1a8 8 0 0 1-2 1.2L13 23H9l-1.2-1.5a8 8 0 0 1-2-1.2l-2.3.1-2-3.4 1.1-2a8 8 0 0 1 0-2l-1.1-2 2-3.4 2.3.1a8 8 0 0 1 2-1.2L9 5h4l1.2 1.5a8 8 0 0 1 2 1.2l2.3-.1 2 3.4-1.1 2a8 8 0 0 1 0 2Z" /></svg><span data-i18n="settingsFull">Settings</span></button>
+          <button class="nav-item" id="adminNavButton" type="button" data-view-target="admin" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3" /></svg><span data-i18n="analytics">Analytics</span></button>
         </nav>
 
-        <div class="sidebar-note"><span class="note-icon" aria-hidden="true">↳</span><div><strong data-i18n="savedLocally">Saved locally</strong><p data-i18n="savedLocallyCopy">Your repair data stays in this browser.</p></div></div>
+        <div class="sidebar-note cloud-note" id="cloudStatusCard"><span class="note-icon cloud-status-dot" id="cloudStatusDot" aria-hidden="true">↳</span><div><strong id="cloudStatusLabel" data-i18n="cloudLocal">Local workspace</strong><p id="cloudStatusCopy" data-i18n="cloudLocalCopy">Sign in to back up and synchronise this workshop.</p></div></div>
         <div class="sidebar-footer">
+          <button class="theme-toggle account-toggle" id="accountButton" type="button" data-i18n-aria="accountAria" aria-label="Open account"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg><span id="accountButtonLabel" data-i18n="account">Account</span><i class="account-presence" id="accountPresence" aria-hidden="true"></i></button>
+          <button class="theme-toggle" id="feedbackButton" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H8l-4 4V4Z" /><path d="M8 8h8M8 12h5" /></svg><span data-i18n="feedback">Feedback</span></button>
           <button class="theme-toggle" id="themeToggle" type="button" data-i18n-aria="switchTheme" aria-label="Switch colour theme"><svg class="sun-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10ZM12 1v3m0 16v3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M1 12h3m16 0h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /></svg><svg class="moon-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15.2A9 9 0 1 1 8.8 3a7 7 0 0 0 12.2 12.2Z" /></svg><span id="themeLabel">Dark mode</span></button>
           <button class="theme-toggle" id="preferencesButton" type="button" data-view-target="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" /></svg><span id="preferencesLabel">English · United States · USD</span></button>
           <p class="author">Pikaneth <span>·</span> Sviatoslav</p>
@@ -38,9 +45,9 @@
       <main class="workspace" id="top">
         <header class="mobile-header">
           <button class="brand brand-button" type="button" data-view-target="overview"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L3.5 17.5a2.1 2.1 0 0 0 3 3l5.4-5.4a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" /></svg></span><span>RepairDesk</span></button>
-          <button class="icon-button" id="mobileThemeToggle" type="button" data-i18n-aria="switchTheme" aria-label="Switch colour theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15.2A9 9 0 1 1 8.8 3a7 7 0 0 0 12.2 12.2Z" /></svg></button>
+          <div class="mobile-header-actions"><button class="icon-button" id="mobileFeedbackButton" type="button" data-i18n-aria="feedbackAria" aria-label="Open feedback"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H8l-4 4V4Z" /><path d="M8 8h8M8 12h5" /></svg></button><button class="icon-button" id="mobileAccountButton" type="button" data-i18n-aria="accountAria" aria-label="Open account"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg></button><button class="icon-button" id="mobileThemeToggle" type="button" data-i18n-aria="switchTheme" aria-label="Switch colour theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15.2A9 9 0 1 1 8.8 3a7 7 0 0 0 12.2 12.2Z" /></svg></button></div>
         </header>
-        <nav class="mobile-nav" aria-label="Mobile navigation"><button class="active" type="button" data-view-target="overview" data-i18n="overview">Overview</button><button type="button" data-view-target="history" data-i18n="history">History</button><button type="button" data-view-target="settings" data-i18n="settingsFull">Settings</button></nav>
+        <nav class="mobile-nav" aria-label="Mobile navigation"><button class="active" type="button" data-view-target="overview" data-i18n="overview">Overview</button><button type="button" data-view-target="history" data-i18n="history">History</button><button type="button" data-view-target="settings" data-i18n="settingsFull">Settings</button><button id="adminMobileNavButton" type="button" data-view-target="admin" data-i18n="analytics" hidden>Analytics</button></nav>
 
         <section class="app-view active" id="overviewView" data-view="overview">
           <section class="hero">
@@ -81,7 +88,22 @@
             <div class="settings-actions"><button class="primary-button" type="submit" data-i18n="saveSettings">Save settings</button></div>
           </form>
         </section>
-        <footer class="page-footer"><p>RepairDesk <span>·</span> <span data-i18n="builtBy">Built by</span> Pikaneth (Sviatoslav)</p><p data-i18n="localFooter">Data is stored locally in your browser.</p></footer>
+
+        <section class="app-view" id="adminView" data-view="admin" hidden>
+          <header class="view-header"><div><p class="eyebrow"><span></span> <span data-i18n="ownerWorkspace">Owner workspace</span></p><h1 data-i18n="analyticsTitle">Product analytics</h1><p data-i18n="analyticsCopy">Registrations, activity, returning users and feedback in one private view.</p></div><button class="secondary-button" id="refreshAdminButton" type="button" data-i18n="refreshAnalytics">Refresh</button></header>
+          <p class="admin-status" id="adminStatus" role="status" aria-live="polite"></p>
+          <section class="stats-grid admin-stats" data-i18n-aria="productStatistics" aria-label="Product statistics">
+            <article class="stat-card stat-card-accent"><div class="stat-card-top"><span data-i18n="registeredUsers">Registered users</span><span class="stat-icon" aria-hidden="true">↟</span></div><strong id="adminTotalUsers">0</strong><p id="adminNewUsersHint">0 new in 30 days</p></article>
+            <article class="stat-card"><div class="stat-card-top"><span data-i18n="activeToday">Active today</span><span class="stat-icon" aria-hidden="true">●</span></div><strong id="adminActiveToday">0</strong><p id="adminActiveWeekHint">0 active in 7 days</p></article>
+            <article class="stat-card"><div class="stat-card-top"><span data-i18n="returningUsers">Returning users</span><span class="stat-icon" aria-hidden="true">↻</span></div><strong id="adminReturningUsers">0</strong><p data-i18n="returningUsersHint">Active on at least two days in the last 30 days</p></article>
+            <article class="stat-card"><div class="stat-card-top"><span data-i18n="openFeedback">Open feedback</span><span class="stat-icon" aria-hidden="true">✦</span></div><strong id="adminOpenFeedback">0</strong><p id="adminEventsHint">0 events in 30 days</p></article>
+          </section>
+          <div class="admin-grid">
+            <section class="settings-card admin-chart-card"><div class="admin-section-heading"><div><p class="eyebrow"><span></span> <span data-i18n="lastThirtyDays">Last 30 days</span></p><h2 data-i18n="dailyActivity">Daily activity</h2></div><div class="admin-legend"><span><i class="users"></i><span data-i18n="activeUsers">Active users</span></span><span><i class="events"></i><span data-i18n="events">Events</span></span></div></div><div class="admin-daily-chart" id="adminDailyChart"></div></section>
+            <section class="settings-card admin-feedback-card"><div class="admin-section-heading"><div><p class="eyebrow"><span></span> <span data-i18n="feedbackInbox">Feedback inbox</span></p><h2 data-i18n="recentFeedback">Recent messages</h2></div></div><div class="admin-feedback-inbox" id="adminFeedbackInbox"></div></section>
+          </div>
+        </section>
+        <footer class="page-footer"><p>RepairDesk <span>·</span> <span data-i18n="builtBy">Built by</span> Pikaneth (Sviatoslav)</p><p id="storageFooter" data-i18n="localFooterV020">Local mode stores data only in this browser.</p></footer>
       </main>
     </div>
 
@@ -111,6 +133,36 @@
       <section class="setup-step" id="countryStep" hidden><p class="eyebrow"><span></span> <span data-i18n="countryStep">Step 2 of 3</span></p><h2 id="countrySetupTitle" data-i18n="chooseCountry">Choose your country</h2><p class="setup-copy" data-i18n="chooseCountryCopy">RepairDesk will prioritise local stores and search results.</p><div class="country-grid" id="countryGrid" role="radiogroup" aria-label="Country"></div><div class="setup-actions split"><button class="secondary-button" id="countryBackButton" type="button" data-i18n="back">Back</button><button class="primary-button" id="countryContinueButton" type="button" data-i18n="continue">Continue</button></div></section>
       <section class="setup-step" id="currencyStep" hidden><p class="eyebrow"><span></span> <span data-i18n="currencyStepV012">Step 3 of 3</span></p><h2 id="currencySetupTitle" data-i18n="chooseCurrency">Choose your currency</h2><p class="setup-copy" data-i18n="chooseCurrencyCopy">Repair totals and costs will use this currency.</p><label class="currency-picker"><span data-i18n="currency">Currency</span><select id="currencySelect"></select></label><div class="currency-preview"><span data-i18n="currencyPreview">Preview</span><strong id="currencyPreview">€1,234.56</strong></div><p class="currency-hint" data-i18n="currencyHint">Changing currency does not convert existing amounts.</p><div class="setup-actions split"><button class="secondary-button" id="currencyBackButton" type="button" data-i18n="back">Back</button><button class="primary-button" id="finishSetupButton" type="button" data-i18n="start">Start using RepairDesk</button></div></section>
     </div></dialog>
+
+    <dialog class="auth-dialog" id="authDialog" aria-labelledby="authTitle">
+      <div class="auth-shell">
+        <aside class="auth-aside"><div class="setup-brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L3.5 17.5a2.1 2.1 0 0 0 3 3l5.4-5.4a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" /></svg></span><span>RepairDesk</span><span class="version-badge">0.2.0</span></div><p class="eyebrow"><span></span> <span data-i18n="cloudWorkspace">Cloud workspace</span></p><h2 data-i18n="heroTitle">Every repair,<br />under control.</h2><ul><li data-i18n="authBenefitIsolation">Secure account isolation</li><li data-i18n="authBenefitBackup">Automatic multi-device backup</li><li data-i18n="authBenefitOffline">Offline-first local copy</li></ul></aside>
+        <section class="auth-panel">
+          <div class="auth-heading"><p class="eyebrow"><span></span> <span data-i18n="account">Account</span></p><h1 id="authTitle" data-i18n="authWelcome">Welcome to your workshop</h1><p data-i18n="authCopy">Sign in to keep repairs backed up and available on every device.</p></div>
+          <div class="auth-tabs" role="tablist"><button class="active" id="authSignInTab" type="button" role="tab" aria-selected="true" data-auth-mode="signin" data-i18n="signIn">Sign in</button><button id="authSignUpTab" type="button" role="tab" aria-selected="false" data-auth-mode="signup" data-i18n="createAccount">Create account</button></div>
+          <form id="authForm" novalidate>
+            <label class="field auth-workshop-field" id="authWorkshopField" hidden><span data-i18n="workshopNameAuth">Workshop name</span><input id="authWorkshopInput" type="text" autocomplete="organization" maxlength="100" /></label>
+            <label class="field"><span data-i18n="emailAddress">Email address</span><input id="authEmailInput" type="email" autocomplete="email" inputmode="email" maxlength="160" required /></label>
+            <label class="field"><span data-i18n="password">Password</span><span class="password-input"><input id="authPasswordInput" type="password" autocomplete="current-password" minlength="8" maxlength="128" required /><button class="password-toggle" type="button" data-password-target="authPasswordInput" data-i18n-aria="showPassword" aria-label="Show password">◉</button></span></label>
+            <label class="field auth-confirm-field" id="authConfirmField" hidden><span data-i18n="confirmPassword">Confirm password</span><span class="password-input"><input id="authConfirmInput" type="password" autocomplete="new-password" minlength="8" maxlength="128" /><button class="password-toggle" type="button" data-password-target="authConfirmInput" data-i18n-aria="showPassword" aria-label="Show password">◉</button></span></label>
+            <p class="form-message" id="authMessage" role="alert" aria-live="polite"></p>
+            <button class="primary-button auth-submit" id="authSubmitButton" type="submit"><span id="authSubmitLabel" data-i18n="signIn">Sign in</span></button>
+          </form>
+          <div class="auth-links"><button class="text-button" id="forgotPasswordButton" type="button" data-i18n="forgotPassword">Forgot password?</button><button class="text-button" id="localModeButton" type="button" data-i18n="continueLocally">Continue locally</button></div>
+          <form class="reset-form" id="resetRequestForm" hidden novalidate><h2 data-i18n="resetPassword">Reset password</h2><label class="field"><span data-i18n="emailAddress">Email address</span><input id="resetEmailInput" type="email" autocomplete="email" required /></label><p class="form-message" id="resetMessage" role="alert"></p><div class="dialog-actions"><button class="secondary-button" id="resetBackButton" type="button" data-i18n="back">Back</button><button class="primary-button" type="submit" data-i18n="sendResetLink">Send reset link</button></div></form>
+          <section class="confirmation-panel" id="confirmationPanel" hidden><span class="confirmation-icon" aria-hidden="true">✓</span><h2 data-i18n="emailConfirmationTitle">Confirm your email</h2><p id="confirmationCopy"></p><button class="primary-button" id="confirmationBackButton" type="button" data-i18n="signIn">Sign in</button></section>
+        </section>
+      </div>
+    </dialog>
+
+    <dialog class="account-dialog" id="accountDialog" aria-labelledby="accountTitle"><div class="account-shell"><div class="dialog-header"><div><p class="eyebrow"><span></span> <span data-i18n="account">Account</span></p><h2 id="accountTitle" data-i18n="accountTitle">Workshop account</h2></div><button class="icon-button dialog-close" id="closeAccountButton" type="button" data-i18n-aria="close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg></button></div><div class="account-profile"><span class="account-avatar" id="accountAvatar">P</span><div><span id="accountIdentityLabel" data-i18n="signedInAs">Signed in as</span><strong id="accountEmail">Local mode</strong><p id="accountDescription" data-i18n="localModeCopy">This browser is in local mode.</p></div></div><div class="sync-summary"><div><span data-i18n="lastSync">Last sync</span><strong id="lastSyncLabel" data-i18n="neverSynced">Not synchronised yet</strong></div><span class="sync-badge" id="accountSyncBadge" data-i18n="cloudLocal">Local workspace</span></div><div class="account-actions"><button class="secondary-button" id="syncNowButton" type="button" data-i18n="syncNow">Sync now</button><button class="secondary-button" id="accountSignInButton" type="button" data-i18n="signIn">Sign in</button><button class="danger-button" id="signOutButton" type="button" data-i18n="signOut">Sign out</button></div></div></dialog>
+
+    <dialog class="migration-dialog" id="migrationDialog" aria-labelledby="migrationTitle"><div class="migration-shell"><span class="migration-icon" aria-hidden="true">↟</span><p class="eyebrow"><span></span> <span data-i18n="cloudMigration">Cloud migration</span></p><h2 id="migrationTitle" data-i18n="migrationTitle">Local repairs found</h2><p data-i18n="migrationCopy">This browser contains repairs that are not connected to your account yet.</p><strong id="localRepairCount">Local repairs: 0</strong><p class="privacy-note"><span aria-hidden="true">↳</span><span data-i18n="migrationSafe">The local copy remains until synchronisation succeeds.</span></p><div class="migration-actions"><button class="secondary-button" id="useCloudDataButton" type="button" data-i18n="useCloudData">Use cloud data</button><button class="primary-button" id="mergeLocalDataButton" type="button" data-i18n="mergeData">Merge and upload</button></div></div></dialog>
+
+    <dialog class="feedback-dialog" id="feedbackDialog" aria-labelledby="feedbackTitle"><form class="feedback-shell" id="feedbackForm" novalidate><div class="dialog-header"><div><p class="eyebrow"><span></span> <span data-i18n="feedback">Feedback</span></p><h2 id="feedbackTitle" data-i18n="feedbackTitle">Help improve the workshop</h2><p data-i18n="feedbackCopy">Tell us what slowed you down or what should be added next.</p></div><button class="icon-button dialog-close" id="closeFeedbackButton" type="button" data-i18n-aria="close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg></button></div><label class="field"><span data-i18n="feedbackType">Type</span><select id="feedbackTypeInput"><option value="idea" data-i18n="feedbackIdea">Feature idea</option><option value="bug" data-i18n="feedbackBug">Something is broken</option><option value="other" data-i18n="feedbackOther">Other feedback</option></select></label><label class="field"><span data-i18n="feedbackMessage">Message</span><textarea id="feedbackMessageInput" rows="6" maxlength="3000" data-i18n-placeholder="feedbackPlaceholder" placeholder="Describe what happened or what would make your work easier…"></textarea></label><p class="form-message" id="feedbackFormMessage" role="alert"></p><div class="dialog-actions"><button class="secondary-button" id="cancelFeedbackButton" type="button" data-i18n="cancel">Cancel</button><button class="primary-button" id="sendFeedbackButton" type="submit" data-i18n="sendFeedback">Send feedback</button></div></form></dialog>
+
+    <dialog class="recovery-dialog" id="recoveryDialog" aria-labelledby="recoveryTitle"><form class="recovery-shell" id="recoveryForm" novalidate><span class="confirmation-icon" aria-hidden="true">↳</span><h2 id="recoveryTitle" data-i18n="recoveryTitle">Choose a new password</h2><p data-i18n="recoveryCopy">Enter a new password for your workshop account.</p><label class="field"><span data-i18n="newPassword">New password</span><input id="recoveryPasswordInput" type="password" autocomplete="new-password" minlength="8" maxlength="128" /></label><label class="field"><span data-i18n="confirmPassword">Confirm password</span><input id="recoveryConfirmInput" type="password" autocomplete="new-password" minlength="8" maxlength="128" /></label><p class="form-message" id="recoveryMessage" role="alert"></p><button class="primary-button" type="submit" data-i18n="updatePassword">Update password</button></form></dialog>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

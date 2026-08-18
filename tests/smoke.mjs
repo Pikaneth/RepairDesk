@@ -8,7 +8,7 @@ const html = read("index.html");
 const app = read("app.js");
 const styles = read("styles.css");
 
-for (const file of ["styles.css", "i18n.js", "i18n-v012.js", "catalog.js", "app.js"]) {
+for (const file of ["styles.css", "config.js", "i18n.js", "i18n-v012.js", "i18n-v020.js", "catalog.js", "cloud.js", "app.js", "supabase/schema.sql"]) {
   assert.ok(fs.existsSync(new URL(file, root)), `${file} is missing`);
 }
 
@@ -19,9 +19,13 @@ const idBlock = app.match(/Object\.fromEntries\(\[([\s\S]*?)\]\.map\(\(id\)/)?.[
 const referencedIds = [...idBlock.matchAll(/"([A-Za-z][A-Za-z0-9]+)"/g)].map((match) => match[1]);
 for (const id of referencedIds) assert.ok(ids.includes(id), `Missing HTML element #${id}`);
 
-for (const id of ["overviewView", "historyView", "settingsView", "finderDialog", "documentDialog", "countryStep"]) {
+for (const id of ["overviewView", "historyView", "settingsView", "adminView", "finderDialog", "documentDialog", "countryStep", "authDialog", "accountDialog", "feedbackDialog", "migrationDialog"]) {
   assert.ok(ids.includes(id), `Required workspace #${id} is missing`);
 }
+assert.match(html, /class="version-badge">0\.2\.0</, "The interface version must be 0.2.0");
+
+const publicConfig = read("config.js");
+assert.doesNotMatch(publicConfig, /service[_-]?role|secret[_-]?key/i, "Public configuration must not contain privileged credentials");
 
 const cssWithoutComments = styles.replace(/\/\*[\s\S]*?\*\//g, "");
 let braceDepth = 0;
@@ -34,7 +38,7 @@ assert.equal(braceDepth, 0, "CSS contains an unclosed block");
 
 const context = { Intl, URL, URLSearchParams };
 vm.createContext(context);
-vm.runInContext(`${read("i18n.js")}\n${read("i18n-v012.js")}\nthis.translations = RepairDeskI18n;`, context);
+vm.runInContext(`${read("i18n.js")}\n${read("i18n-v012.js")}\n${read("i18n-v020.js")}\nthis.translations = RepairDeskI18n;`, context);
 assert.equal(context.translations.languages.length, 20, "Expected 20 languages");
 assert.equal(Object.keys(context.translations.messages).length, 20, "Expected 20 message catalogs");
 
