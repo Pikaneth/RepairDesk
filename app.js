@@ -4,6 +4,9 @@ const THEME_KEY = "repairdesk.theme";
 const DELETED_KEY = "repairdesk.deleted.v1";
 const LAST_SYNC_KEY = "repairdesk.cloud.last-sync.v1";
 const MIGRATION_KEY_PREFIX = "repairdesk.cloud.migrated.";
+const LOCAL_MODE_KEY = "repairdesk.cloud.local-mode.v1";
+const CLOUD_SYNC_RETRY_MIN = 1600;
+const CLOUD_SYNC_RETRY_MAX = 60000;
 const SETUP_VERSION = 2;
 
 const { languages, messages } = RepairDeskI18n;
@@ -375,8 +378,9 @@ let cloudSyncTimer = null;
 let cloudSyncInFlight = false;
 let cloudSyncPending = false;
 let cloudSyncState = "local";
+let cloudSyncRetryDelay = CLOUD_SYNC_RETRY_MIN;
 let authMode = "signin";
-let localModeChosen = false;
+let localModeChosen = readStorage(LOCAL_MODE_KEY) === "1";
 let pendingCloudSnapshot = null;
 let cloudProfile = null;
 let adminDashboard = null;
@@ -1619,6 +1623,7 @@ async function performCloudSync({ notify = false, retry = true } = {}) {
     cloudRevision = Number(result.revision) || cloudRevision;
     const syncedAt = result.updated_at || new Date().toISOString();
     writeStorage(LAST_SYNC_KEY, syncedAt);
+    cloudSyncRetryDelay = CLOUD_SYNC_RETRY_MIN;
     setCloudState("ready");
     if (notify) showToast(t("syncSuccess"));
     return true;
@@ -1629,7 +1634,11 @@ async function performCloudSync({ notify = false, retry = true } = {}) {
     return false;
   } finally {
     cloudSyncInFlight = false;
-    if (cloudSyncPending && (typeof navigator.onLine !== "boolean" || navigator.onLine)) scheduleCloudSync(1600);
+    if (cloudSyncPending && (typeof navigator.onLine !== "boolean" || navigator.onLine)) {
+      const retryDelay = cloudSyncRetryDelay;
+      cloudSyncRetryDelay = Math.min(cloudSyncRetryDelay * 2, CLOUD_SYNC_RETRY_MAX);
+      scheduleCloudSync(retryDelay);
+    }
   }
 }
 
@@ -1759,6 +1768,7 @@ async function submitResetRequest(event) {
 
 function continueLocally() {
   localModeChosen = true;
+  writeStorage(LOCAL_MODE_KEY, "1");
   if (elements.authDialog.open) elements.authDialog.close();
   setCloudState("local");
   if (!settings.setupComplete) openSetup("language");
@@ -1787,6 +1797,11 @@ async function loadCloudWorkspace(user) {
     setCloudState("ready");
   } else {
     cloudRevision = null;
+    repairs = [];
+    deletedRepairs = [];
+    writeStorage(STORAGE_KEY, JSON.stringify(repairs));
+    writeStorage(DELETED_KEY, JSON.stringify(deletedRepairs));
+    render();
     await performCloudSync();
   }
   await RepairDeskCloud.updateProfile({ workshopName: settings.workshop.name, language: currentLanguage, country: currentCountry, currency: currentCurrency, onboardingCompleted: settings.setupComplete }).catch(() => {});
@@ -1799,6 +1814,8 @@ async function completeCloudSignIn(user, authEvent = "") {
   if (elements.authDialog.open) elements.authDialog.close();
   try {
     await loadCloudWorkspace(user);
+    localModeChosen = false;
+    writeStorage(LOCAL_MODE_KEY, "0");
     if (authEvent) await RepairDeskCloud.track(`account_${authEvent}`);
     if (!settings.setupComplete && !elements.migrationDialog.open) openSetup("language");
     else if (settings.setupVersion < SETUP_VERSION && !elements.migrationDialog.open) openSetup("country");
@@ -1815,6 +1832,9 @@ async function handleAuthStateChange(event, session) {
     return;
   }
   if (event === "SIGNED_OUT") {
+    clearTimeout(cloudSyncTimer);
+    cloudSyncPending = false;
+    cloudSyncRetryDelay = CLOUD_SYNC_RETRY_MIN;
     cloudUser = null;
     cloudProfile = null;
     adminDashboard = null;

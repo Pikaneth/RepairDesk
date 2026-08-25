@@ -59,7 +59,7 @@ function createContext(config, supabase) {
   assert.equal((await api.init(() => {})).configured, false, "Privileged browser credentials must be rejected");
 }
 
-const calls = { inserts: [], upserts: [], updates: [], rpc: [], signUp: null, reset: null };
+const calls = { inserts: [], updates: [], rpc: [], signUp: null, reset: null };
 const user = { id: "00000000-0000-4000-8000-000000000001", email: "owner@example.com" };
 const snapshot = { repairs: [], settings: {}, deleted_repairs: [], revision: 4, updated_at: "2026-08-18T12:00:00.000Z", last_device_id: "other-device" };
 
@@ -90,10 +90,6 @@ const client = {
       },
       async insert(payload) {
         calls.inserts.push({ table, payload });
-        return { data: null, error: null };
-      },
-      async upsert(payload, options) {
-        calls.upserts.push({ table, payload, options });
         return { data: null, error: null };
       },
       update(payload) {
@@ -146,8 +142,9 @@ assert.equal(calls.rpc[0].name, "save_user_data");
 assert.equal(calls.rpc[0].payload.p_expected_revision, 4);
 
 await api.updateProfile({ workshopName: "Test Lab", language: "en", country: "DE", currency: "EUR", onboardingCompleted: true });
-assert.equal(calls.upserts[0].table, "profiles");
-assert.equal(calls.upserts[0].payload.id, user.id);
+const profileUpdate = calls.updates.find((entry) => entry.table === "profiles");
+assert.ok(profileUpdate, "Profile settings must use an update against the trigger-created row");
+assert.equal("id" in profileUpdate.payload, false, "The immutable profile id must not be included in an update payload");
 
 await api.track("repair_created", { category: "smartphone", "bad key": "removed", nested: { unsafe: true } });
 const analytics = calls.rpc.find((entry) => entry.name === "track_product_event");
@@ -163,8 +160,9 @@ assert.equal(feedback.payload.p_message, "Add barcode scanning");
 
 assert.equal((await api.loadAdminDashboard()).totals.total_users, 1);
 await api.updateFeedbackStatus(1, "planned");
-assert.equal(calls.updates[0].table, "feedback");
-assert.equal(calls.updates[0].payload.status, "planned");
+const feedbackUpdate = calls.updates.find((entry) => entry.table === "feedback");
+assert.equal(feedbackUpdate.table, "feedback");
+assert.equal(feedbackUpdate.payload.status, "planned");
 
 await api.sendPasswordReset("owner@example.com");
 assert.equal(calls.reset.options.redirectTo, "https://pikaneth.github.io/RepairDesk/?recovery=1");
@@ -178,6 +176,15 @@ assert.match(schema, /create or replace function public\.get_admin_dashboard[\s\
 assert.match(schema, /create or replace function public\.track_product_event[\s\S]*Analytics rate limit exceeded/i);
 assert.match(schema, /create or replace function public\.submit_user_feedback[\s\S]*Feedback rate limit exceeded/i);
 assert.match(schema, /grant select on public\.app_data to authenticated/i);
+assert.doesNotMatch(schema, /grant insert \([^)]*\) on public\.profiles to authenticated/i, "Profiles must be created only by the trusted auth trigger");
+assert.match(schema, /revoke insert \([^)]*\) on public\.profiles from authenticated/i, "Schema upgrades must remove the earlier browser profile-insert grant");
+assert.match(schema, /grant update \(status\) on public\.feedback to authenticated/i, "Product administrators may update only feedback status");
+assert.doesNotMatch(schema, /grant select, update on public\.feedback/i, "Feedback messages and ownership must remain immutable from the browser");
+assert.doesNotMatch(schema, /grant usage, select on all sequences/i, "Browser users do not need blanket sequence privileges");
+assert.match(schema, /revoke usage, select on all sequences in schema public from authenticated/i, "Schema upgrades must remove earlier blanket sequence privileges");
+const appDataSelectPolicy = schema.match(/create policy "app_data_select_own"[\s\S]*?;/i)?.[0] || "";
+assert.match(appDataSelectPolicy, /using \(user_id = \(select auth\.uid\(\)\)\);/i, "Administrators must not receive blanket access to customer repair snapshots");
+assert.doesNotMatch(appDataSelectPolicy, /is_app_admin/i, "Workshop snapshots must remain isolated even from product administrators");
 assert.doesNotMatch(schema, /grant select, insert, update on public\.app_data/i, "Snapshots must only be written through the guarded RPC");
 assert.doesNotMatch(schema, /grant select, insert on public\.analytics_events/i, "Analytics must only be written through the rate-limited RPC");
 assert.doesNotMatch(schema, /service_role|secret_key/i, "Schema must not contain privileged credentials");

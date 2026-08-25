@@ -132,7 +132,7 @@ context.RepairDeskCloud = {
 context.window.RepairDeskCloud = context.RepairDeskCloud;
 context.window.window = context.window;
 vm.createContext(context);
-vm.runInContext(`${read("i18n.js")}\n${read("i18n-v012.js")}\n${read("i18n-v020.js")}\n${read("catalog.js")}\n${read("app.js")}\nthis.state = { repairs, currentCountry, currentCurrency, currentLanguage, t, extractResultPrice, parsePriceNumber, openDocument, normalizeRepair, recordRepairChanges, mergeDeletedLists, mergeRepairLists, chooseNewestSettings, setAdminTestData(value) { cloudProfile = { is_admin: true }; adminDashboard = value; renderAdminData(); } };`, context);
+vm.runInContext(`${read("i18n.js")}\n${read("i18n-v012.js")}\n${read("i18n-v020.js")}\n${read("catalog.js")}\n${read("app.js")}\nthis.state = { repairs, currentCountry, currentCurrency, currentLanguage, t, extractResultPrice, parsePriceNumber, openDocument, normalizeRepair, recordRepairChanges, mergeDeletedLists, mergeRepairLists, chooseNewestSettings, continueLocally, setAdminTestData(value) { cloudProfile = { is_admin: true }; adminDashboard = value; renderAdminData(); } };`, context);
 await new Promise((resolve) => setImmediate(resolve));
 
 assert.equal(context.state.currentLanguage, "ru");
@@ -140,6 +140,9 @@ assert.equal(context.state.currentCountry, "RU");
 assert.equal(context.state.currentCurrency, "RUB");
 assert.equal(elements.get("setupDialog").open, true, "Existing users should be asked to confirm a country");
 assert.equal(elements.get("countryStep").hidden, false, "Country step should be open for an upgraded profile");
+
+context.state.continueLocally();
+assert.equal(store.get("repairdesk.cloud.local-mode.v1"), "1", "An explicit local-mode choice must survive a reload");
 
 const repair = context.state.repairs[0];
 assert.equal(repair.history[0].type, "created");

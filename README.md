@@ -28,9 +28,12 @@ RepairDesk is a responsive, local-first workshop manager for repairs, parts, ord
 - Email registration and sign-in
 - Email confirmation and password recovery
 - Local-first operation with automatic background synchronisation
+- Remembered local-mode choice instead of showing the account prompt after every reload
 - Safe migration of existing browser data into an account
+- Empty first cloud workspace, without uploading the local demonstration records
 - Multi-device merge based on record timestamps and deletion markers
 - Optimistic revision checks to prevent silent cloud overwrites
+- Bounded retry backoff for temporary cloud failures
 - Manual **Sync now** control and clear online, offline and error states
 - In-app feedback form for signed-in users
 - Product event collection for signed-in accounts without repair or customer contents in event properties

@@ -26,8 +26,11 @@ assert.match(html, /class="version-badge">0\.2\.0</, "The interface version must
 
 const publicConfig = read("config.js");
 assert.doesNotMatch(publicConfig, /service[_-]?role|secret[_-]?key/i, "Public configuration must not contain privileged credentials");
+assert.match(app, /CLOUD_SYNC_RETRY_MAX\s*=\s*60000/, "Persistent cloud errors must use bounded retry backoff");
+assert.match(app, /else \{\s*cloudRevision = null;\s*repairs = \[\];\s*deletedRepairs = \[\];[\s\S]*?await performCloudSync\(\);\s*\}/, "A new account must not upload demonstration repairs as workshop data");
 
 const cssWithoutComments = styles.replace(/\/\*[\s\S]*?\*\//g, "");
+assert.match(cssWithoutComments, /\[hidden\]\s*\{[^}]*display\s*:\s*none\s*!important\s*;/, "Hidden interface states must not be overridden by component display rules");
 let braceDepth = 0;
 for (const character of cssWithoutComments) {
   if (character === "{") braceDepth += 1;

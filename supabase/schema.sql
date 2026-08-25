@@ -133,7 +133,7 @@ alter table public.analytics_events enable row level security;
 
 drop policy if exists "profiles_select_own" on public.profiles;
 create policy "profiles_select_own" on public.profiles for select to authenticated
-using (id = (select auth.uid()) or (select private.is_app_admin()));
+using (id = (select auth.uid()));
 
 drop policy if exists "profiles_insert_own" on public.profiles;
 create policy "profiles_insert_own" on public.profiles for insert to authenticated
@@ -146,7 +146,7 @@ with check (id = (select auth.uid()));
 
 drop policy if exists "app_data_select_own" on public.app_data;
 create policy "app_data_select_own" on public.app_data for select to authenticated
-using (user_id = (select auth.uid()) or (select private.is_app_admin()));
+using (user_id = (select auth.uid()));
 
 drop policy if exists "app_data_insert_own" on public.app_data;
 create policy "app_data_insert_own" on public.app_data for insert to authenticated
@@ -180,13 +180,15 @@ using ((select private.is_app_admin()));
 
 revoke all on public.profiles, public.app_data, public.feedback, public.analytics_events from anon;
 revoke all on public.profiles, public.app_data, public.feedback, public.analytics_events from authenticated;
+revoke insert (id, workshop_name, language, country, currency, onboarding_completed, last_seen_at) on public.profiles from authenticated;
+revoke update (workshop_name, language, country, currency, onboarding_completed, last_seen_at, updated_at) on public.profiles from authenticated;
+revoke usage, select on all sequences in schema public from authenticated;
 grant select on public.profiles to authenticated;
-grant insert (id, workshop_name, language, country, currency, onboarding_completed, last_seen_at) on public.profiles to authenticated;
-grant update (workshop_name, language, country, currency, onboarding_completed, last_seen_at, updated_at) on public.profiles to authenticated;
+grant update (workshop_name, language, country, currency, onboarding_completed, last_seen_at) on public.profiles to authenticated;
 grant select on public.app_data to authenticated;
-grant select, update on public.feedback to authenticated;
+grant select on public.feedback to authenticated;
+grant update (status) on public.feedback to authenticated;
 grant select on public.analytics_events to authenticated;
-grant usage, select on all sequences in schema public to authenticated;
 
 create or replace function public.submit_user_feedback(
   p_type text,

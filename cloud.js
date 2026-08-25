@@ -197,7 +197,6 @@
   async function updateProfile(values) {
     if (!state.client || !state.user) return;
     const payload = {
-      id: state.user.id,
       workshop_name: String(values.workshopName || "").trim().slice(0, 100),
       language: String(values.language || "en").slice(0, 10),
       country: String(values.country || "US").slice(0, 2),
@@ -205,7 +204,7 @@
       onboarding_completed: Boolean(values.onboardingCompleted),
       last_seen_at: new Date().toISOString(),
     };
-    const { error } = await state.client.from("profiles").upsert(payload, { onConflict: "id" });
+    const { error } = await state.client.from("profiles").update(payload).eq("id", state.user.id);
     if (error) throw cleanError(error, "Could not update the account profile.");
   }
 
