@@ -1,0 +1,43 @@
+name: Validate
+
+on:
+  push:
+    branches:
+      - main
+      - feature/cloud-accounts
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Dependency-free test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check app.js
+          node --check cloud.js
+
+      - name: Run smoke tests
+        run: |
+          node tests/smoke.mjs
+          node tests/runtime-smoke.mjs
+          node tests/cloud-smoke.mjs
