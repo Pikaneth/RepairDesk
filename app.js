@@ -58,7 +58,10 @@ const elements = Object.fromEntries([
   "recoveryDialog", "recoveryForm", "recoveryPasswordInput", "recoveryConfirmInput", "recoveryMessage",
   "adminNavButton", "adminMobileNavButton", "adminView", "refreshAdminButton", "adminStatus", "adminTotalUsers",
   "adminNewUsersHint", "adminActiveToday", "adminActiveWeekHint", "adminReturningUsers", "adminOpenFeedback",
-  "adminEventsHint", "adminDailyChart", "adminFeedbackInbox",
+  "adminEventsHint", "adminCloudWorkspaces", "adminSyncHealthHint", "adminTotalRepairs", "adminStorageHint",
+  "adminDailyChart", "adminEventBreakdown", "adminCountryBreakdown", "adminUserSearch", "adminUserCount",
+  "adminUsersTableBody", "adminUsersMoreButton", "adminFeedbackFilter", "adminFeedbackInbox", "adminAuditLog",
+  "exportAdminButton",
 ].map((id) => [id, document.getElementById(id)]));
 
 elements.submitButtonLabel = document.getElementById("submitButtonLabel");
@@ -384,7 +387,11 @@ let localModeChosen = readStorage(LOCAL_MODE_KEY) === "1";
 let pendingCloudSnapshot = null;
 let cloudProfile = null;
 let adminDashboard = null;
+let adminUsers = null;
 let adminLoading = false;
+let adminUsersLoading = false;
+let adminUsersReloadPending = false;
+let adminUserSearchTimer = null;
 
 function settingsSnapshot() {
   return {
@@ -1782,6 +1789,7 @@ async function loadCloudWorkspace(user) {
   const [snapshot, profile] = await Promise.all([RepairDeskCloud.loadSnapshot(), RepairDeskCloud.loadProfile()]);
   cloudProfile = profile;
   adminDashboard = null;
+  adminUsers = null;
   updateCloudInterface();
   const migrated = Boolean(readStorage(migrationKey(user)));
   if (localRepairsWereEdited() && !migrated) {
@@ -1819,6 +1827,7 @@ async function completeCloudSignIn(user, authEvent = "") {
     if (authEvent) await RepairDeskCloud.track(`account_${authEvent}`);
     if (!settings.setupComplete && !elements.migrationDialog.open) openSetup("language");
     else if (settings.setupVersion < SETUP_VERSION && !elements.migrationDialog.open) openSetup("country");
+    else if (cloudProfile?.is_admin && adminViewRequested()) showView("admin");
   } catch {
     cloudUser = user;
     setCloudState("error");
@@ -1838,6 +1847,9 @@ async function handleAuthStateChange(event, session) {
     cloudUser = null;
     cloudProfile = null;
     adminDashboard = null;
+    adminUsers = null;
+    adminUsersReloadPending = false;
+    clearTimeout(adminUserSearchTimer);
     cloudRevision = null;
     pendingCloudSnapshot = null;
     setCloudState("local");
@@ -1888,6 +1900,39 @@ function adminCount(value) {
   return new Intl.NumberFormat(currentLocale()).format(Number(value) || 0);
 }
 
+function formatAdminBytes(value) {
+  const bytes = Math.max(0, Number(value) || 0);
+  if (bytes < 1024) return `${adminCount(bytes)} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let amount = bytes / 1024;
+  let index = 0;
+  while (amount >= 1024 && index < units.length - 1) {
+    amount /= 1024;
+    index += 1;
+  }
+  return `${new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: amount >= 10 ? 1 : 2 }).format(amount)} ${units[index]}`;
+}
+
+function renderAdminBreakdown(element, rows = [], labelField = "name") {
+  element.replaceChildren();
+  if (!rows.length) {
+    const empty = document.createElement("p");
+    empty.className = "admin-empty compact";
+    empty.textContent = t("noAnalyticsYet");
+    element.append(empty);
+    return;
+  }
+  const maximum = Math.max(1, ...rows.map((row) => Number(row.count) || 0));
+  rows.forEach((row) => {
+    const count = Number(row.count) || 0;
+    const item = document.createElement("div");
+    item.className = "admin-breakdown-row";
+    const label = String(row[labelField] || "—").replaceAll("_", " ");
+    item.innerHTML = `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(adminCount(count))}</strong></div><i><span style="width:${Math.max(3, count / maximum * 100)}%"></span></i>`;
+    element.append(item);
+  });
+}
+
 function renderAdminChart(daily = []) {
   elements.adminDailyChart.replaceChildren();
   if (!daily.length) {
@@ -1924,6 +1969,51 @@ function renderAdminChart(daily = []) {
   });
 }
 
+function renderAdminUsers() {
+  const rows = Array.isArray(adminUsers?.users) ? adminUsers.users : [];
+  const total = Number(adminUsers?.total) || 0;
+  elements.adminUsersTableBody.replaceChildren();
+  elements.adminUserCount.textContent = t("adminUserCount", { shown: adminCount(rows.length), total: adminCount(total) });
+  if (!rows.length) {
+    const row = document.createElement("tr");
+    row.innerHTML = `<td colspan="7" class="admin-table-empty">${escapeHtml(t("noUsers"))}</td>`;
+    elements.adminUsersTableBody.append(row);
+  } else {
+    rows.forEach((user) => {
+      const row = document.createElement("tr");
+      const confirmed = Boolean(user.email_confirmed_at);
+      const identity = user.email || String(user.id || "").slice(0, 12) || "—";
+      const workshop = user.workshop_name || t("defaultWorkshopName");
+      const activeAt = user.last_seen_at || user.last_sign_in_at;
+      row.innerHTML = `<td><div class="admin-user-identity"><strong>${escapeHtml(identity)}</strong><span>${escapeHtml(workshop)}</span><i class="${confirmed ? "confirmed" : "pending"}">${escapeHtml(t(confirmed ? "confirmed" : "pendingConfirmation"))}</i></div></td><td><strong>${escapeHtml(user.country || "—")}</strong><span class="admin-cell-meta">${escapeHtml([user.language, user.currency].filter(Boolean).join(" · "))}</span></td><td><time datetime="${escapeHtml(user.created_at || "")}">${escapeHtml(formatDateTime(user.created_at))}</time></td><td><time datetime="${escapeHtml(activeAt || "")}">${escapeHtml(activeAt ? formatDateTime(activeAt) : t("notSet"))}</time></td><td><time datetime="${escapeHtml(user.last_sync_at || "")}">${escapeHtml(formatSyncTime(user.last_sync_at))}</time><span class="admin-cell-meta">r${escapeHtml(adminCount(user.revision))}</span></td><td>${escapeHtml(adminCount(user.repair_count))}</td><td>${escapeHtml(formatAdminBytes(user.snapshot_bytes))}</td>`;
+      elements.adminUsersTableBody.append(row);
+    });
+  }
+  elements.adminUsersMoreButton.hidden = rows.length >= total;
+  elements.adminUsersMoreButton.disabled = adminUsersLoading;
+}
+
+function renderAdminAudit(audit = []) {
+  elements.adminAuditLog.replaceChildren();
+  if (!audit.length) {
+    const empty = document.createElement("p");
+    empty.className = "admin-empty compact";
+    empty.textContent = t("noAudit");
+    elements.adminAuditLog.append(empty);
+    return;
+  }
+  audit.forEach((item) => {
+    const article = document.createElement("article");
+    article.className = "admin-audit-item";
+    const details = item.details || {};
+    const description = item.action === "feedback_status_changed"
+      ? t("feedbackStatusChangeAudit", { id: item.target_id || "—", from: feedbackStatusLabel(details.from), to: feedbackStatusLabel(details.to) })
+      : String(item.action || "—").replaceAll("_", " ");
+    article.innerHTML = `<span class="admin-audit-mark" aria-hidden="true">↳</span><div><strong>${escapeHtml(description)}</strong><span>${escapeHtml(item.admin_email || "—")} · ${escapeHtml(formatDateTime(item.created_at))}</span></div>`;
+    elements.adminAuditLog.append(article);
+  });
+}
+
 function feedbackStatusLabel(status) {
   const key = { new: "feedbackStatusNew", reviewing: "feedbackStatusReviewing", planned: "feedbackStatusPlanned", resolved: "feedbackStatusResolved", closed: "feedbackStatusClosed" }[status];
   return t(key || "feedbackStatusNew");
@@ -1931,7 +2021,9 @@ function feedbackStatusLabel(status) {
 
 function renderAdminFeedback(feedback = []) {
   elements.adminFeedbackInbox.replaceChildren();
-  if (!feedback.length) {
+  const filter = elements.adminFeedbackFilter.value || "all";
+  const visible = filter === "all" ? feedback : feedback.filter((item) => item.status === filter);
+  if (!visible.length) {
     const empty = document.createElement("p");
     empty.className = "admin-empty";
     empty.textContent = t("noFeedbackYet");
@@ -1939,12 +2031,12 @@ function renderAdminFeedback(feedback = []) {
     return;
   }
   const statuses = ["new", "reviewing", "planned", "resolved", "closed"];
-  feedback.forEach((item) => {
+  visible.forEach((item) => {
     const article = document.createElement("article");
     article.className = "admin-feedback-item";
     article.dataset.feedbackId = String(item.id);
     const typeKey = { idea: "feedbackIdea", bug: "feedbackBug", other: "feedbackOther" }[item.type] || "feedbackOther";
-    const meta = [item.workshop_name || t("defaultWorkshopName"), item.page, item.app_version ? `v${item.app_version}` : ""].filter(Boolean).join(" · ");
+    const meta = [item.workshop_name || t("defaultWorkshopName"), item.user_email, item.page, item.app_version ? `v${item.app_version}` : ""].filter(Boolean).join(" · ");
     const options = statuses.map((status) => `<option value="${status}"${status === item.status ? " selected" : ""}>${escapeHtml(feedbackStatusLabel(status))}</option>`).join("");
     article.innerHTML = `<div><header><span class="admin-feedback-type">${escapeHtml(t(typeKey))}</span><time datetime="${escapeHtml(item.created_at || "")}">${escapeHtml(formatDateTime(item.created_at))}</time></header><p>${escapeHtml(item.message || "")}</p><span class="admin-feedback-meta">${escapeHtml(meta)}</span></div><select class="admin-feedback-status" data-feedback-status aria-label="${escapeHtml(t("feedbackStatus"))}">${options}</select>`;
     elements.adminFeedbackInbox.append(article);
@@ -1960,14 +2052,56 @@ function renderAdminData() {
   elements.adminReturningUsers.textContent = adminCount(totals.returning_30d);
   elements.adminOpenFeedback.textContent = adminCount(totals.open_feedback);
   elements.adminEventsHint.textContent = t("adminEvents30d", { count: adminCount(totals.events_30d) });
+  elements.adminCloudWorkspaces.textContent = adminCount(totals.cloud_workspaces);
+  elements.adminSyncHealthHint.textContent = `${t("adminSync24h", { count: adminCount(totals.active_workspaces_24h) })} · ${t("adminStale30d", { count: adminCount(totals.stale_workspaces_30d) })}`;
+  elements.adminTotalRepairs.textContent = adminCount(totals.total_repairs);
+  elements.adminStorageHint.textContent = t("adminStorageUsed", { size: formatAdminBytes(totals.storage_bytes) });
   renderAdminChart(Array.isArray(adminDashboard?.daily) ? adminDashboard.daily : []);
+  renderAdminBreakdown(elements.adminEventBreakdown, Array.isArray(adminDashboard?.event_breakdown) ? adminDashboard.event_breakdown : [], "name");
+  renderAdminBreakdown(elements.adminCountryBreakdown, Array.isArray(adminDashboard?.country_breakdown) ? adminDashboard.country_breakdown : [], "country");
+  renderAdminUsers();
   renderAdminFeedback(Array.isArray(adminDashboard?.feedback) ? adminDashboard.feedback : []);
+  renderAdminAudit(Array.isArray(adminDashboard?.audit) ? adminDashboard.audit : []);
+}
+
+async function loadAdminUserDirectory(reset = true) {
+  if (!cloudProfile?.is_admin) return;
+  if (adminUsersLoading) {
+    if (reset) adminUsersReloadPending = true;
+    return;
+  }
+  const query = elements.adminUserSearch.value.trim();
+  const append = !reset && adminUsers?.query === query;
+  const offset = append ? (Array.isArray(adminUsers?.users) ? adminUsers.users.length : 0) : 0;
+  adminUsersLoading = true;
+  elements.adminUsersMoreButton.disabled = true;
+  try {
+    const page = await RepairDeskCloud.loadAdminUsers(query, 50, offset);
+    if (!cloudProfile?.is_admin || query !== elements.adminUserSearch.value.trim()) return;
+    const nextRows = Array.isArray(page?.users) ? page.users : [];
+    const previousRows = append && Array.isArray(adminUsers?.users) ? adminUsers.users : [];
+    const unique = new Map([...previousRows, ...nextRows].map((item) => [String(item.id), item]));
+    adminUsers = { ...page, query, users: [...unique.values()] };
+    renderAdminUsers();
+  } catch {
+    elements.adminStatus.textContent = t("adminUsersLoadFailed");
+    elements.adminStatus.classList.add("error");
+  } finally {
+    adminUsersLoading = false;
+    elements.adminUsersMoreButton.disabled = false;
+    if (adminUsersReloadPending && cloudProfile?.is_admin) {
+      adminUsersReloadPending = false;
+      loadAdminUserDirectory(true);
+    }
+  }
 }
 
 async function renderAdminDashboard(force = false) {
   if (!cloudProfile?.is_admin || adminLoading) return;
+  const adminUserId = cloudUser?.id;
   if (adminDashboard && !force) {
     renderAdminData();
+    if (!adminUsers) await loadAdminUserDirectory(true);
     return;
   }
   adminLoading = true;
@@ -1976,7 +2110,14 @@ async function renderAdminDashboard(force = false) {
   elements.adminStatus.classList.remove("error");
   elements.adminStatus.textContent = t("analyticsLoading");
   try {
-    adminDashboard = await RepairDeskCloud.loadAdminDashboard();
+    const query = elements.adminUserSearch.value.trim();
+    const [dashboard, users] = await Promise.all([
+      RepairDeskCloud.loadAdminDashboard(),
+      RepairDeskCloud.loadAdminUsers(query, 50, 0),
+    ]);
+    if (!cloudProfile?.is_admin || cloudUser?.id !== adminUserId) return;
+    adminDashboard = dashboard;
+    adminUsers = { ...users, query, users: Array.isArray(users?.users) ? users.users : [] };
     renderAdminData();
     elements.adminStatus.textContent = t("analyticsUpdated", { time: formatSyncTime(adminDashboard?.generated_at) });
   } catch {
@@ -2000,6 +2141,15 @@ async function changeFeedbackStatus(select) {
   try {
     await RepairDeskCloud.updateFeedbackStatus(item.id, next);
     item.status = next;
+    adminDashboard.audit = [{
+      id: `local-${Date.now()}`,
+      action: "feedback_status_changed",
+      target_type: "feedback",
+      target_id: String(item.id),
+      details: { from: previous, to: next },
+      created_at: new Date().toISOString(),
+      admin_email: cloudUser?.email || "",
+    }, ...(Array.isArray(adminDashboard.audit) ? adminDashboard.audit : [])].slice(0, 30);
     const open = new Set(["new", "reviewing", "planned"]);
     if (open.has(previous) !== open.has(next)) adminDashboard.totals.open_feedback = Math.max(0, Number(adminDashboard.totals.open_feedback) + (open.has(next) ? 1 : -1));
     renderAdminData();
@@ -2010,6 +2160,54 @@ async function changeFeedbackStatus(select) {
   } finally {
     select.disabled = false;
   }
+}
+
+function adminCsvCell(value) {
+  let text = String(value ?? "");
+  if (/^[\t\r\n ]*[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function exportAdminCsv() {
+  if (!cloudProfile?.is_admin || !adminDashboard) return;
+  const totals = adminDashboard.totals || {};
+  const users = Array.isArray(adminUsers?.users) ? adminUsers.users : [];
+  const rows = [
+    ["RepairDesk owner report", new Date().toISOString()],
+    ["Registered users", totals.total_users || 0],
+    ["Active today", totals.active_today || 0],
+    ["Active in 7 days", totals.active_7d || 0],
+    ["Returning in 30 days", totals.returning_30d || 0],
+    ["Cloud workspaces", totals.cloud_workspaces || 0],
+    ["Repairs managed", totals.total_repairs || 0],
+    ["Storage bytes", totals.storage_bytes || 0],
+    [],
+    ["Email", "Workshop", "Country", "Language", "Currency", "Confirmed", "Joined", "Last active", "Last sync", "Repairs", "Snapshot bytes"],
+    ...users.map((user) => [
+      user.email,
+      user.workshop_name,
+      user.country,
+      user.language,
+      user.currency,
+      Boolean(user.email_confirmed_at),
+      user.created_at,
+      user.last_seen_at || user.last_sign_in_at || "",
+      user.last_sync_at || "",
+      user.repair_count || 0,
+      user.snapshot_bytes || 0,
+    ]),
+  ];
+  const csv = rows.map((row) => row.map(adminCsvCell).join(",")).join("\r\n");
+  const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `repairdesk-owner-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  showToast(t("adminExportReady"));
 }
 
 function openAccountDialog() {
@@ -2094,6 +2292,10 @@ function togglePasswordVisibility(button) {
   input.type = input.type === "password" ? "text" : "password";
 }
 
+function adminViewRequested() {
+  return new URLSearchParams(window.location.search).get("admin") === "1";
+}
+
 async function initialiseApplication() {
   initialiseTheme();
   refreshFormatters();
@@ -2104,7 +2306,7 @@ async function initialiseApplication() {
     if (result.user) await completeCloudSignIn(result.user);
     else if (!settings.setupComplete) openSetup("language");
     else if (settings.setupVersion < SETUP_VERSION) openSetup("country");
-    else if (cloudConfigured && !localModeChosen) openAuthDialog("signin");
+    else if (cloudConfigured && (!localModeChosen || adminViewRequested())) openAuthDialog("signin");
     else continueLocally();
     if (new URLSearchParams(window.location.search).get("recovery") === "1" && result.user && !elements.recoveryDialog.open) elements.recoveryDialog.showModal();
   } catch {
@@ -2120,6 +2322,13 @@ elements.mobileAccountButton.addEventListener("click", openAccountDialog);
 elements.feedbackButton.addEventListener("click", openFeedbackDialog);
 elements.mobileFeedbackButton.addEventListener("click", openFeedbackDialog);
 elements.refreshAdminButton.addEventListener("click", () => renderAdminDashboard(true));
+elements.exportAdminButton.addEventListener("click", exportAdminCsv);
+elements.adminUsersMoreButton.addEventListener("click", () => loadAdminUserDirectory(false));
+elements.adminUserSearch.addEventListener("input", () => {
+  clearTimeout(adminUserSearchTimer);
+  adminUserSearchTimer = setTimeout(() => loadAdminUserDirectory(true), 280);
+});
+elements.adminFeedbackFilter.addEventListener("change", () => renderAdminFeedback(Array.isArray(adminDashboard?.feedback) ? adminDashboard.feedback : []));
 elements.adminFeedbackInbox.addEventListener("change", (event) => { if (event.target.matches("[data-feedback-status]")) changeFeedbackStatus(event.target); });
 elements.closeAccountButton.addEventListener("click", () => elements.accountDialog.close());
 elements.accountSignInButton.addEventListener("click", () => { elements.accountDialog.close(); openAuthDialog("signin"); });

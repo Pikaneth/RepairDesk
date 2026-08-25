@@ -6,6 +6,7 @@ const root = new URL("../", import.meta.url);
 const read = (name) => fs.readFileSync(new URL(name, root), "utf8");
 const html = read("index.html");
 const app = read("app.js");
+const cloud = read("cloud.js");
 const styles = read("styles.css");
 
 for (const file of ["styles.css", "config.js", "i18n.js", "i18n-v012.js", "i18n-v020.js", "catalog.js", "cloud.js", "app.js", "supabase/schema.sql"]) {
@@ -19,10 +20,11 @@ const idBlock = app.match(/Object\.fromEntries\(\[([\s\S]*?)\]\.map\(\(id\)/)?.[
 const referencedIds = [...idBlock.matchAll(/"([A-Za-z][A-Za-z0-9]+)"/g)].map((match) => match[1]);
 for (const id of referencedIds) assert.ok(ids.includes(id), `Missing HTML element #${id}`);
 
-for (const id of ["overviewView", "historyView", "settingsView", "adminView", "finderDialog", "documentDialog", "countryStep", "authDialog", "accountDialog", "feedbackDialog", "migrationDialog"]) {
+for (const id of ["overviewView", "historyView", "settingsView", "adminView", "adminUsersTableBody", "adminAuditLog", "finderDialog", "documentDialog", "countryStep", "authDialog", "accountDialog", "feedbackDialog", "migrationDialog"]) {
   assert.ok(ids.includes(id), `Required workspace #${id} is missing`);
 }
-assert.match(html, /class="version-badge">0\.2\.0</, "The interface version must be 0.2.0");
+assert.match(html, /class="version-badge">0\.2\.1</, "The interface version must be 0.2.1");
+assert.match(cloud, /const APP_VERSION = "0\.2\.1"/, "Cloud events must use the interface version");
 
 const publicConfig = read("config.js");
 assert.doesNotMatch(publicConfig, /service[_-]?role|secret[_-]?key/i, "Public configuration must not contain privileged credentials");

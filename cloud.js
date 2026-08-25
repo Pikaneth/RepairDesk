@@ -1,6 +1,7 @@
 (() => {
   const DEVICE_KEY = "repairdesk.cloud.device.v1";
   const SESSION_KEY = "repairdesk.cloud.session.v1";
+  const APP_VERSION = "0.2.1";
   const config = window.REPAIRDESK_CONFIG || {};
   const state = {
     client: null,
@@ -214,7 +215,7 @@
       p_type: String(type || "other").slice(0, 30),
       p_message: String(message || "").trim().slice(0, 3000),
       p_page: String(page || "overview").slice(0, 60),
-      p_app_version: "0.2.0",
+      p_app_version: APP_VERSION,
     });
     if (error) throw cleanError(error, "Could not send feedback.");
     await track("feedback_sent", { type });
@@ -227,12 +228,27 @@
     return data;
   }
 
+  async function loadAdminUsers(query = "", limit = 50, offset = 0) {
+    if (!state.client || !state.user) throw new Error("Authentication required.");
+    const { data, error } = await state.client.rpc("get_admin_users", {
+      p_query: String(query || "").trim().slice(0, 120),
+      p_limit: Math.min(100, Math.max(1, Number(limit) || 50)),
+      p_offset: Math.min(10000, Math.max(0, Number(offset) || 0)),
+    });
+    if (error) throw cleanError(error, "Could not load user directory.");
+    return data;
+  }
+
   async function updateFeedbackStatus(id, status) {
     if (!state.client || !state.user) throw new Error("Authentication required.");
     const allowed = new Set(["new", "reviewing", "planned", "resolved", "closed"]);
     if (!allowed.has(status)) throw new Error("Invalid feedback status.");
-    const { error } = await state.client.from("feedback").update({ status }).eq("id", Number(id));
+    const { data, error } = await state.client.rpc("set_admin_feedback_status", {
+      p_id: Number(id),
+      p_status: status,
+    });
     if (error) throw cleanError(error, "Could not update feedback.");
+    return data;
   }
 
   async function track(name, properties = {}) {
@@ -245,7 +261,7 @@
         p_device_id: deviceId,
         p_event_name: eventName,
         p_properties: cleanProperties(properties),
-        p_app_version: "0.2.0",
+        p_app_version: APP_VERSION,
       });
     } catch {}
   }
@@ -263,6 +279,7 @@
     updateProfile,
     submitFeedback,
     loadAdminDashboard,
+    loadAdminUsers,
     updateFeedbackStatus,
     track,
     isConfigured: () => state.configured,

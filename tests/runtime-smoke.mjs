@@ -127,17 +127,24 @@ context.RepairDeskCloud = {
   saveSnapshot: async () => ({ ok: false, offline: true }),
   updateProfile: async () => {},
   submitFeedback: async () => {},
+  loadAdminDashboard: async () => ({ totals: {}, daily: [], feedback: [] }),
+  loadAdminUsers: async () => ({ total: 0, users: [] }),
+  updateFeedbackStatus: async () => {},
   track: async () => {},
 };
 context.window.RepairDeskCloud = context.RepairDeskCloud;
 context.window.window = context.window;
 vm.createContext(context);
-vm.runInContext(`${read("i18n.js")}\n${read("i18n-v012.js")}\n${read("i18n-v020.js")}\n${read("catalog.js")}\n${read("app.js")}\nthis.state = { repairs, currentCountry, currentCurrency, currentLanguage, t, extractResultPrice, parsePriceNumber, openDocument, normalizeRepair, recordRepairChanges, mergeDeletedLists, mergeRepairLists, chooseNewestSettings, continueLocally, setAdminTestData(value) { cloudProfile = { is_admin: true }; adminDashboard = value; renderAdminData(); } };`, context);
+vm.runInContext(`${read("i18n.js")}\n${read("i18n-v012.js")}\n${read("i18n-v020.js")}\n${read("catalog.js")}\n${read("app.js")}\nthis.state = { repairs, currentCountry, currentCurrency, currentLanguage, t, extractResultPrice, parsePriceNumber, openDocument, normalizeRepair, recordRepairChanges, mergeDeletedLists, mergeRepairLists, chooseNewestSettings, continueLocally, adminCsvCell, adminViewRequested, setAdminTestData(value, users) { cloudProfile = { is_admin: true }; adminDashboard = value; adminUsers = users; renderAdminData(); } };`, context);
 await new Promise((resolve) => setImmediate(resolve));
 
 assert.equal(context.state.currentLanguage, "ru");
 assert.equal(context.state.currentCountry, "RU");
 assert.equal(context.state.currentCurrency, "RUB");
+assert.equal(context.state.adminViewRequested(), false);
+context.window.location.search = "?admin=1";
+assert.equal(context.state.adminViewRequested(), true, "The owner console must support a direct sign-in route");
+context.window.location.search = "";
 assert.equal(elements.get("setupDialog").open, true, "Existing users should be asked to confirm a country");
 assert.equal(elements.get("countryStep").hidden, false, "Country step should be open for an upgraded profile");
 
@@ -198,14 +205,27 @@ const newestSettings = context.state.chooseNewestSettings(
 assert.equal(newestSettings.language, "ru", "The newest workshop settings must win a sync conflict");
 
 context.state.setAdminTestData({
-  totals: { total_users: 12, new_users_30d: 5, active_today: 3, active_7d: 8, returning_30d: 4, open_feedback: 1, events_30d: 37 },
+  totals: { total_users: 12, new_users_30d: 5, active_today: 3, active_7d: 8, returning_30d: 4, open_feedback: 1, events_30d: 37, cloud_workspaces: 9, active_workspaces_24h: 3, stale_workspaces_30d: 2, total_repairs: 48, storage_bytes: 15360 },
   daily: [{ day: new Date().toISOString().slice(0, 10), active_users: 3, events: 9 }],
-  feedback: [{ id: 1, type: "idea", message: "Добавить сканер штрихкодов", page: "settings", app_version: "0.2.0", status: "new", created_at: "2026-08-18T10:00:00.000Z", workshop_name: "Тестовая мастерская" }],
+  event_breakdown: [{ name: "repair_created", count: 14 }, { name: "app_open", count: 9 }],
+  country_breakdown: [{ country: "DE", count: 7 }],
+  feedback: [{ id: 1, type: "idea", message: "Добавить сканер штрихкодов", page: "settings", app_version: "0.2.1", status: "new", created_at: "2026-08-18T10:00:00.000Z", workshop_name: "Тестовая мастерская", user_email: "owner@example.com" }],
+  audit: [{ id: 1, action: "feedback_status_changed", target_id: "1", details: { from: "new", to: "planned" }, created_at: "2026-08-18T11:00:00.000Z", admin_email: "owner@example.com" }],
+}, {
+  total: 1,
+  users: [{ id: "owner", email: "owner@example.com", email_confirmed_at: "2026-08-18T09:00:00.000Z", created_at: "2026-08-18T09:00:00.000Z", last_seen_at: "2026-08-18T11:00:00.000Z", last_sync_at: "2026-08-18T11:00:00.000Z", workshop_name: "Тестовая мастерская", country: "DE", language: "ru", currency: "EUR", revision: 5, repair_count: 4, snapshot_bytes: 2048 }],
 });
 assert.equal(elements.get("adminTotalUsers").textContent, "12");
 assert.equal(elements.get("adminReturningUsers").textContent, "4");
+assert.equal(elements.get("adminCloudWorkspaces").textContent, "9");
+assert.equal(elements.get("adminTotalRepairs").textContent, "48");
 assert.equal(elements.get("adminDailyChart").children.length, 30, "The owner chart must cover 30 calendar days");
+assert.equal(elements.get("adminEventBreakdown").children.length, 2, "The owner console must render event breakdowns");
+assert.equal(elements.get("adminCountryBreakdown").children.length, 1, "The owner console must render country breakdowns");
+assert.equal(elements.get("adminUsersTableBody").children.length, 1, "The user directory must render account health rows");
 assert.equal(elements.get("adminFeedbackInbox").children.length, 1, "Feedback must appear in the owner inbox");
 assert.match(elements.get("adminFeedbackInbox").children[0].innerHTML, /сканер штрихкодов/);
+assert.equal(elements.get("adminAuditLog").children.length, 1, "Audited owner actions must be visible");
+assert.match(context.state.adminCsvCell("=HYPERLINK(\"https://example.com\")"), /^"'/, "CSV exports must neutralise spreadsheet formulas");
 
-console.log("RepairDesk runtime checks passed: migration, sync merge, owner analytics, price parsing, orders, history and documents.");
+console.log("RepairDesk runtime checks passed: migration, sync merge, owner console, safe export, price parsing, orders, history and documents.");
