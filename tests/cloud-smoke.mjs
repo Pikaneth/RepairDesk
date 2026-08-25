@@ -102,6 +102,8 @@ const client = {
   async rpc(name, payload) {
     calls.rpc.push({ name, payload });
     if (name === "get_admin_dashboard") return { data: { totals: { total_users: 1 }, daily: [], feedback: [] }, error: null };
+    if (name === "get_admin_users") return { data: { total: 1, users: [{ id: user.id, email: user.email, repair_count: 0 }] }, error: null };
+    if (name === "set_admin_feedback_status") return { data: { ok: true, id: payload.p_id, status: payload.p_status }, error: null };
     return { data: { ok: true, revision: 5, updated_at: "2026-08-18T12:01:00.000Z" }, error: null };
   },
 };
@@ -152,17 +154,25 @@ assert.equal(analytics.payload.p_event_name, "repair_created");
 assert.equal(analytics.payload.p_properties.category, "smartphone");
 assert.equal(analytics.payload.p_properties.badkey, "removed");
 assert.equal(typeof analytics.payload.p_properties.nested, "string");
+assert.equal(analytics.payload.p_app_version, "0.2.1");
 
 await api.submitFeedback("idea", "Add barcode scanning", "settings");
 const feedback = calls.rpc.find((entry) => entry.name === "submit_user_feedback");
 assert.equal(feedback.payload.p_type, "idea");
 assert.equal(feedback.payload.p_message, "Add barcode scanning");
+assert.equal(feedback.payload.p_app_version, "0.2.1");
 
 assert.equal((await api.loadAdminDashboard()).totals.total_users, 1);
+const directory = await api.loadAdminUsers("owner", 25, 0);
+assert.equal(directory.users[0].email, user.email);
+const userDirectoryCall = calls.rpc.find((entry) => entry.name === "get_admin_users");
+assert.equal(userDirectoryCall.payload.p_query, "owner");
+assert.equal(userDirectoryCall.payload.p_limit, 25);
 await api.updateFeedbackStatus(1, "planned");
-const feedbackUpdate = calls.updates.find((entry) => entry.table === "feedback");
-assert.equal(feedbackUpdate.table, "feedback");
-assert.equal(feedbackUpdate.payload.status, "planned");
+const feedbackUpdate = calls.rpc.find((entry) => entry.name === "set_admin_feedback_status");
+assert.equal(feedbackUpdate.payload.p_id, 1);
+assert.equal(feedbackUpdate.payload.p_status, "planned");
+assert.equal(calls.updates.some((entry) => entry.table === "feedback"), false, "Feedback changes must use the audited administrator RPC");
 
 await api.sendPasswordReset("owner@example.com");
 assert.equal(calls.reset.options.redirectTo, "https://pikaneth.github.io/RepairDesk/?recovery=1");
@@ -173,12 +183,22 @@ for (const table of ["profiles", "app_data", "feedback", "analytics_events"]) {
 }
 assert.match(schema, /create or replace function public\.save_user_data[\s\S]*security definer/i);
 assert.match(schema, /create or replace function public\.get_admin_dashboard[\s\S]*Administrator access required/i);
+assert.match(schema, /create or replace function public\.get_admin_users[\s\S]*Administrator access required/i);
+assert.match(schema, /create or replace function public\.set_admin_feedback_status[\s\S]*Administrator access required/i);
+for (const functionName of ["get_admin_dashboard", "get_admin_users", "set_admin_feedback_status"]) {
+  assert.match(schema, new RegExp(`create or replace function public\\.${functionName}[\\s\\S]*?security definer[\\s\\S]*?set search_path = ''`, "i"), `${functionName} must pin an empty search path`);
+}
 assert.match(schema, /create or replace function public\.track_product_event[\s\S]*Analytics rate limit exceeded/i);
 assert.match(schema, /create or replace function public\.submit_user_feedback[\s\S]*Feedback rate limit exceeded/i);
+assert.match(schema, /create table if not exists private\.admin_audit_log/i, "Owner actions must have a private audit log");
+assert.match(schema, /alter table private\.admin_audit_log enable row level security/i, "The owner audit log must use defense-in-depth RLS");
+assert.match(schema, /jsonb_array_length\(d\.repairs\)[\s\S]*snapshot_bytes/i, "The owner directory may expose only aggregate workspace health");
+assert.doesNotMatch(schema, /'repairs'\s*,\s*user_row\.repairs/i, "The owner directory must never return customer repair snapshots");
 assert.match(schema, /grant select on public\.app_data to authenticated/i);
 assert.doesNotMatch(schema, /grant insert \([^)]*\) on public\.profiles to authenticated/i, "Profiles must be created only by the trusted auth trigger");
 assert.match(schema, /revoke insert \([^)]*\) on public\.profiles from authenticated/i, "Schema upgrades must remove the earlier browser profile-insert grant");
-assert.match(schema, /grant update \(status\) on public\.feedback to authenticated/i, "Product administrators may update only feedback status");
+assert.match(schema, /revoke update \(status\) on public\.feedback from authenticated/i, "Feedback changes must be restricted to the audited RPC");
+assert.doesNotMatch(schema, /grant update \(status\) on public\.feedback to authenticated/i, "Direct feedback updates must not remain exposed");
 assert.doesNotMatch(schema, /grant select, update on public\.feedback/i, "Feedback messages and ownership must remain immutable from the browser");
 assert.doesNotMatch(schema, /grant usage, select on all sequences/i, "Browser users do not need blanket sequence privileges");
 assert.match(schema, /revoke usage, select on all sequences in schema public from authenticated/i, "Schema upgrades must remove earlier blanket sequence privileges");

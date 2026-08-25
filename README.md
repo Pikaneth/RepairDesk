@@ -2,7 +2,7 @@
 
 RepairDesk is a responsive, local-first workshop manager for repairs, parts, orders, customers, documents and day-to-day shop activity.
 
-![RepairDesk](https://img.shields.io/badge/RepairDesk-v0.2.0-d9ff63?style=flat-square&labelColor=15231f)
+![RepairDesk](https://img.shields.io/badge/RepairDesk-v0.2.1-d9ff63?style=flat-square&labelColor=15231f)
 ![HTML](https://img.shields.io/badge/HTML5-Project-e34f26?style=flat-square&logo=html5&logoColor=white)
 ![CSS](https://img.shields.io/badge/CSS3-Responsive-1572b6?style=flat-square&logo=css3&logoColor=white)
 ![JavaScript](https://img.shields.io/badge/JavaScript-Vanilla-f7df1e?style=flat-square&logo=javascript&logoColor=111)
@@ -40,6 +40,20 @@ RepairDesk is a responsive, local-first workshop manager for repairs, parts, ord
 - Private owner dashboard for registrations, daily activity, returning users and feedback triage
 - Row-level account isolation for profiles, workshop snapshots, feedback and analytics
 
+## Owner console in v0.2.1
+
+The private owner console adds operational visibility without exposing customer repair contents:
+
+- Six headline metrics for registrations, activity, retention, feedback, cloud workspaces and repairs managed
+- Thirty-day activity chart plus event and country breakdowns
+- Read-only user directory with email confirmation, workshop locale, last activity, last sync, revision, repair count and snapshot size
+- Search and incremental loading for the user directory
+- Feedback filtering and audited status changes
+- Private database audit log for owner actions
+- Spreadsheet-safe CSV export for the currently loaded owner report
+
+Owner access is enforced inside every privileged database function. The browser never receives a secret or service-role credential, and the directory returns workspace metadata only—not repair, customer, invoice or note contents.
+
 The application remains fully usable in local mode when cloud configuration is empty or the network is unavailable.
 
 ## Getting started locally
@@ -67,10 +81,11 @@ RepairDesk uses Supabase Auth and Postgres. The frontend only needs a public pro
 3. Run the complete [`supabase/schema.sql`](supabase/schema.sql) file.
 
 The script creates profiles, workshop snapshots, feedback, analytics, indexes, triggers, row-level security policies and guarded RPC functions.
+It is idempotent and should be run again after upgrading RepairDesk so new owner-console functions and security changes are applied.
 
 ### 2. Add the public connection values
 
-Open `config.js` and set the project URL and publishable key:
+Open the project **Connect** dialog or **Project Settings → API Keys**, then copy the project URL and publishable key. Open `config.js` and set both values:
 
 ```js
 window.REPAIRDESK_CONFIG = Object.freeze({
@@ -107,7 +122,17 @@ where id = (
 );
 ```
 
-After the next sign-in, an **Analytics** navigation item appears only for that administrator. The dashboard shows total and new registrations, active users, returning users, events by day and the latest feedback messages.
+After the next sign-in, an **Analytics** navigation item appears only for that administrator. The owner console shows registrations, active and returning users, workspace health, aggregate repair counts, account metadata, feedback and audited owner actions.
+
+The owner can also use the direct sign-in URL:
+
+```text
+https://pikaneth.github.io/RepairDesk/?admin=1
+```
+
+The route still performs the same database role check and falls back to the normal workspace for non-administrator accounts.
+
+The owner directory deliberately does not return repair snapshots. Raw workshop contents remain isolated to their account; the console receives only counts, timestamps, revisions and byte sizes needed for operational support.
 
 ## Synchronisation model
 

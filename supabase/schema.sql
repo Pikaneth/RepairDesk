@@ -54,11 +54,23 @@ create table if not exists public.analytics_events (
   constraint analytics_properties_are_object check (jsonb_typeof(properties) = 'object')
 );
 
+create table if not exists private.admin_audit_log (
+  id bigint generated always as identity primary key,
+  admin_user_id uuid references auth.users(id) on delete set null,
+  action text not null check (char_length(action) between 1 and 80),
+  target_type text not null default '' check (char_length(target_type) <= 40),
+  target_id text not null default '' check (char_length(target_id) <= 120),
+  details jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  constraint admin_audit_details_are_object check (jsonb_typeof(details) = 'object')
+);
+
 create index if not exists feedback_user_created_idx on public.feedback (user_id, created_at desc);
 create index if not exists feedback_status_created_idx on public.feedback (status, created_at desc);
 create index if not exists analytics_user_created_idx on public.analytics_events (user_id, created_at desc);
 create index if not exists analytics_event_created_idx on public.analytics_events (event_name, created_at desc);
 create index if not exists analytics_session_idx on public.analytics_events (session_id);
+create index if not exists admin_audit_created_idx on private.admin_audit_log (created_at desc);
 
 create or replace function private.is_app_admin()
 returns boolean
@@ -130,6 +142,7 @@ alter table public.profiles enable row level security;
 alter table public.app_data enable row level security;
 alter table public.feedback enable row level security;
 alter table public.analytics_events enable row level security;
+alter table private.admin_audit_log enable row level security;
 
 drop policy if exists "profiles_select_own" on public.profiles;
 create policy "profiles_select_own" on public.profiles for select to authenticated
@@ -166,9 +179,6 @@ create policy "feedback_select_own_or_admin" on public.feedback for select to au
 using (user_id = (select auth.uid()) or (select private.is_app_admin()));
 
 drop policy if exists "feedback_update_admin" on public.feedback;
-create policy "feedback_update_admin" on public.feedback for update to authenticated
-using ((select private.is_app_admin()))
-with check ((select private.is_app_admin()));
 
 drop policy if exists "analytics_insert_own" on public.analytics_events;
 create policy "analytics_insert_own" on public.analytics_events for insert to authenticated
@@ -180,14 +190,16 @@ using ((select private.is_app_admin()));
 
 revoke all on public.profiles, public.app_data, public.feedback, public.analytics_events from anon;
 revoke all on public.profiles, public.app_data, public.feedback, public.analytics_events from authenticated;
+revoke all on private.admin_audit_log from public, anon, authenticated;
 revoke insert (id, workshop_name, language, country, currency, onboarding_completed, last_seen_at) on public.profiles from authenticated;
 revoke update (workshop_name, language, country, currency, onboarding_completed, last_seen_at, updated_at) on public.profiles from authenticated;
+revoke update (status) on public.feedback from authenticated;
 revoke usage, select on all sequences in schema public from authenticated;
+revoke usage, select on all sequences in schema private from authenticated;
 grant select on public.profiles to authenticated;
 grant update (workshop_name, language, country, currency, onboarding_completed, last_seen_at) on public.profiles to authenticated;
 grant select on public.app_data to authenticated;
 grant select on public.feedback to authenticated;
-grant update (status) on public.feedback to authenticated;
 grant select on public.analytics_events to authenticated;
 
 create or replace function public.submit_user_feedback(
@@ -383,15 +395,27 @@ declare
   v_returning_30d bigint;
   v_events_30d bigint;
   v_open_feedback bigint;
+  v_cloud_workspaces bigint;
+  v_active_workspaces_24h bigint;
+  v_stale_workspaces_30d bigint;
+  v_total_repairs bigint;
+  v_storage_bytes bigint;
   v_daily jsonb;
   v_feedback jsonb;
+  v_event_breakdown jsonb;
+  v_country_breakdown jsonb;
+  v_audit jsonb;
 begin
   if (select auth.uid()) is null or not coalesce(private.is_app_admin(), false) then
     raise exception 'Administrator access required' using errcode = '42501';
   end if;
 
-  select count(*) into v_total_users from public.profiles;
-  select count(*) into v_new_users_30d from public.profiles where created_at >= current_date - interval '29 days';
+  select
+    count(*),
+    count(*) filter (where created_at >= current_date - interval '29 days')
+  into v_total_users, v_new_users_30d
+  from public.profiles;
+
   select count(distinct user_id) into v_active_today from public.analytics_events where created_at >= current_date;
   select count(distinct user_id) into v_active_7d from public.analytics_events where created_at >= current_date - interval '6 days';
   select count(*) into v_returning_30d
@@ -404,6 +428,19 @@ begin
   ) returning_users;
   select count(*) into v_events_30d from public.analytics_events where created_at >= current_date - interval '29 days';
   select count(*) into v_open_feedback from public.feedback where status in ('new', 'reviewing', 'planned');
+
+  select
+    count(*),
+    count(*) filter (where updated_at >= now() - interval '24 hours'),
+    count(*) filter (where updated_at < now() - interval '30 days'),
+    coalesce(sum(jsonb_array_length(repairs)), 0),
+    coalesce(sum(
+      pg_column_size(repairs)::bigint
+      + pg_column_size(settings)::bigint
+      + pg_column_size(deleted_repairs)::bigint
+    ), 0)
+  into v_cloud_workspaces, v_active_workspaces_24h, v_stale_workspaces_30d, v_total_repairs, v_storage_bytes
+  from public.app_data;
 
   select coalesce(jsonb_agg(to_jsonb(day_row) order by day_row.day), '[]'::jsonb) into v_daily
   from (
@@ -429,18 +466,89 @@ begin
         'app_version', feedback_row.app_version,
         'status', feedback_row.status,
         'created_at', feedback_row.created_at,
-        'workshop_name', feedback_row.workshop_name
+        'workshop_name', feedback_row.workshop_name,
+        'user_email', feedback_row.user_email
       ) order by feedback_row.created_at desc
     ),
     '[]'::jsonb
   ) into v_feedback
   from (
-    select f.id, f.type, f.message, f.page, f.app_version, f.status, f.created_at, coalesce(p.workshop_name, '') as workshop_name
+    select
+      f.id,
+      f.type,
+      f.message,
+      f.page,
+      f.app_version,
+      f.status,
+      f.created_at,
+      coalesce(p.workshop_name, '') as workshop_name,
+      lower(coalesce(u.email, '')) as user_email
     from public.feedback f
     left join public.profiles p on p.id = f.user_id
+    left join auth.users u on u.id = f.user_id
     order by f.created_at desc
-    limit 50
+    limit 100
   ) feedback_row;
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object('name', event_row.event_name, 'count', event_row.event_count)
+      order by event_row.event_count desc, event_row.event_name
+    ),
+    '[]'::jsonb
+  ) into v_event_breakdown
+  from (
+    select event_name, count(*) as event_count
+    from public.analytics_events
+    where created_at >= current_date - interval '29 days'
+    group by event_name
+    order by event_count desc, event_name
+    limit 10
+  ) event_row;
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object('country', country_row.country, 'count', country_row.user_count)
+      order by country_row.user_count desc, country_row.country
+    ),
+    '[]'::jsonb
+  ) into v_country_breakdown
+  from (
+    select upper(coalesce(nullif(country, ''), '--')) as country, count(*) as user_count
+    from public.profiles
+    group by upper(coalesce(nullif(country, ''), '--'))
+    order by user_count desc, country
+    limit 10
+  ) country_row;
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', audit_row.id,
+        'action', audit_row.action,
+        'target_type', audit_row.target_type,
+        'target_id', audit_row.target_id,
+        'details', audit_row.details,
+        'created_at', audit_row.created_at,
+        'admin_email', audit_row.admin_email
+      ) order by audit_row.created_at desc
+    ),
+    '[]'::jsonb
+  ) into v_audit
+  from (
+    select
+      a.id,
+      a.action,
+      a.target_type,
+      a.target_id,
+      a.details,
+      a.created_at,
+      lower(coalesce(u.email, '')) as admin_email
+    from private.admin_audit_log a
+    left join auth.users u on u.id = a.admin_user_id
+    order by a.created_at desc
+    limit 30
+  ) audit_row;
 
   return jsonb_build_object(
     'totals', jsonb_build_object(
@@ -450,10 +558,18 @@ begin
       'active_7d', v_active_7d,
       'returning_30d', v_returning_30d,
       'events_30d', v_events_30d,
-      'open_feedback', v_open_feedback
+      'open_feedback', v_open_feedback,
+      'cloud_workspaces', v_cloud_workspaces,
+      'active_workspaces_24h', v_active_workspaces_24h,
+      'stale_workspaces_30d', v_stale_workspaces_30d,
+      'total_repairs', v_total_repairs,
+      'storage_bytes', v_storage_bytes
     ),
     'daily', v_daily,
     'feedback', v_feedback,
+    'event_breakdown', v_event_breakdown,
+    'country_breakdown', v_country_breakdown,
+    'audit', v_audit,
     'generated_at', now()
   );
 end;
@@ -461,5 +577,167 @@ $$;
 
 revoke all on function public.get_admin_dashboard() from public, anon;
 grant execute on function public.get_admin_dashboard() to authenticated;
+
+create or replace function public.get_admin_users(
+  p_query text default '',
+  p_limit integer default 50,
+  p_offset integer default 0
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_query text := left(trim(coalesce(p_query, '')), 120);
+  v_limit integer := least(greatest(coalesce(p_limit, 50), 1), 100);
+  v_offset integer := least(greatest(coalesce(p_offset, 0), 0), 10000);
+  v_total bigint;
+  v_users jsonb;
+begin
+  if (select auth.uid()) is null or not coalesce(private.is_app_admin(), false) then
+    raise exception 'Administrator access required' using errcode = '42501';
+  end if;
+
+  select count(*) into v_total
+  from auth.users u
+  left join public.profiles p on p.id = u.id
+  where v_query = ''
+     or coalesce(u.email, '') ilike '%' || v_query || '%'
+     or coalesce(p.workshop_name, '') ilike '%' || v_query || '%'
+     or coalesce(p.country, '') ilike '%' || v_query || '%';
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', user_row.id,
+        'email', user_row.email,
+        'email_confirmed_at', user_row.email_confirmed_at,
+        'created_at', user_row.created_at,
+        'last_sign_in_at', user_row.last_sign_in_at,
+        'workshop_name', user_row.workshop_name,
+        'country', user_row.country,
+        'language', user_row.language,
+        'currency', user_row.currency,
+        'onboarding_completed', user_row.onboarding_completed,
+        'last_seen_at', user_row.last_seen_at,
+        'last_sync_at', user_row.last_sync_at,
+        'revision', user_row.revision,
+        'repair_count', user_row.repair_count,
+        'snapshot_bytes', user_row.snapshot_bytes
+      ) order by user_row.activity_at desc, user_row.created_at desc
+    ),
+    '[]'::jsonb
+  ) into v_users
+  from (
+    select
+      u.id,
+      lower(coalesce(u.email, '')) as email,
+      u.email_confirmed_at,
+      u.created_at,
+      u.last_sign_in_at,
+      coalesce(p.workshop_name, '') as workshop_name,
+      upper(coalesce(nullif(p.country, ''), '--')) as country,
+      coalesce(p.language, '') as language,
+      coalesce(p.currency, '') as currency,
+      coalesce(p.onboarding_completed, false) as onboarding_completed,
+      p.last_seen_at,
+      d.updated_at as last_sync_at,
+      coalesce(d.revision, 0) as revision,
+      coalesce(jsonb_array_length(d.repairs), 0) as repair_count,
+      case when d.user_id is null then 0 else
+        pg_column_size(d.repairs)::bigint
+        + pg_column_size(d.settings)::bigint
+        + pg_column_size(d.deleted_repairs)::bigint
+      end as snapshot_bytes,
+      coalesce(p.last_seen_at, u.last_sign_in_at, u.created_at) as activity_at
+    from auth.users u
+    left join public.profiles p on p.id = u.id
+    left join public.app_data d on d.user_id = u.id
+    where v_query = ''
+       or coalesce(u.email, '') ilike '%' || v_query || '%'
+       or coalesce(p.workshop_name, '') ilike '%' || v_query || '%'
+       or coalesce(p.country, '') ilike '%' || v_query || '%'
+    order by activity_at desc, u.created_at desc
+    limit v_limit
+    offset v_offset
+  ) user_row;
+
+  return jsonb_build_object(
+    'total', v_total,
+    'users', v_users,
+    'limit', v_limit,
+    'offset', v_offset,
+    'generated_at', now()
+  );
+end;
+$$;
+
+revoke all on function public.get_admin_users(text, integer, integer) from public, anon;
+grant execute on function public.get_admin_users(text, integer, integer) to authenticated;
+
+create or replace function public.set_admin_feedback_status(
+  p_id bigint,
+  p_status text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_admin_id uuid := (select auth.uid());
+  v_previous_status text;
+  v_updated_at timestamptz;
+begin
+  if v_admin_id is null or not coalesce(private.is_app_admin(), false) then
+    raise exception 'Administrator access required' using errcode = '42501';
+  end if;
+  if p_id is null or p_id < 1 then
+    raise exception 'Invalid feedback identifier';
+  end if;
+  if p_status not in ('new', 'reviewing', 'planned', 'resolved', 'closed') then
+    raise exception 'Invalid feedback status';
+  end if;
+
+  select status into v_previous_status
+  from public.feedback
+  where id = p_id
+  for update;
+
+  if not found then
+    raise exception 'Feedback not found';
+  end if;
+
+  if v_previous_status <> p_status then
+    update public.feedback
+    set status = p_status
+    where id = p_id
+    returning updated_at into v_updated_at;
+
+    insert into private.admin_audit_log (admin_user_id, action, target_type, target_id, details)
+    values (
+      v_admin_id,
+      'feedback_status_changed',
+      'feedback',
+      p_id::text,
+      jsonb_build_object('from', v_previous_status, 'to', p_status)
+    );
+  else
+    select updated_at into v_updated_at from public.feedback where id = p_id;
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'id', p_id,
+    'status', p_status,
+    'updated_at', v_updated_at
+  );
+end;
+$$;
+
+revoke all on function public.set_admin_feedback_status(bigint, text) from public, anon;
+grant execute on function public.set_admin_feedback_status(bigint, text) to authenticated;
 
 commit;
