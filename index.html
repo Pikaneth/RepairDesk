@@ -7,14 +7,20 @@
     <meta name="theme-color" content="#f4f2ed" />
     <title>RepairDesk — Cloud workshop manager</title>
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="assets/app-icon.svg" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles-v034.css" />
     <script src="config.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     <script src="i18n.js" defer></script>
     <script src="i18n-v012.js" defer></script>
     <script src="i18n-v020.js" defer></script>
+    <script src="i18n-v034.js" defer></script>
     <script src="catalog.js" defer></script>
     <script src="cloud.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
+    <script src="v034.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -22,7 +28,7 @@
       <aside class="sidebar" aria-label="Primary navigation">
         <button class="brand brand-button" type="button" data-view-target="overview" aria-label="RepairDesk home">
           <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L3.5 17.5a2.1 2.1 0 0 0 3 3l5.4-5.4a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" /></svg></span>
-          <span>RepairDesk</span><span class="version-badge">0.2.1</span>
+          <span>RepairDesk</span><span class="version-badge">0.3.4</span>
         </button>
 
         <nav class="nav-list">
@@ -144,7 +150,7 @@
 
     <dialog class="auth-dialog" id="authDialog" aria-labelledby="authTitle">
       <div class="auth-shell">
-        <aside class="auth-aside"><div class="setup-brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L3.5 17.5a2.1 2.1 0 0 0 3 3l5.4-5.4a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" /></svg></span><span>RepairDesk</span><span class="version-badge">0.2.1</span></div><p class="eyebrow"><span></span> <span data-i18n="cloudWorkspace">Cloud workspace</span></p><h2 data-i18n="heroTitle">Every repair,<br />under control.</h2><ul><li data-i18n="authBenefitIsolation">Secure account isolation</li><li data-i18n="authBenefitBackup">Automatic multi-device backup</li><li data-i18n="authBenefitOffline">Offline-first local copy</li></ul></aside>
+        <aside class="auth-aside"><div class="setup-brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L3.5 17.5a2.1 2.1 0 0 0 3 3l5.4-5.4a4.5 4.5 0 0 0 5.8-5.8l-2.4 2.4-3-3 2.4-2.4Z" /></svg></span><span>RepairDesk</span><span class="version-badge">0.3.4</span></div><p class="eyebrow"><span></span> <span data-i18n="cloudWorkspace">Cloud workspace</span></p><h2 data-i18n="heroTitle">Every repair,<br />under control.</h2><ul><li data-i18n="authBenefitIsolation">Secure account isolation</li><li data-i18n="authBenefitBackup">Automatic multi-device backup</li><li data-i18n="authBenefitOffline">Offline-first local copy</li></ul></aside>
         <section class="auth-panel">
           <div class="auth-heading"><p class="eyebrow"><span></span> <span data-i18n="account">Account</span></p><h1 id="authTitle" data-i18n="authWelcome">Welcome to your workshop</h1><p data-i18n="authCopy">Sign in to keep repairs backed up and available on every device.</p></div>
           <div class="auth-tabs" role="tablist"><button class="active" id="authSignInTab" type="button" role="tab" aria-selected="true" data-auth-mode="signin" data-i18n="signIn">Sign in</button><button id="authSignUpTab" type="button" role="tab" aria-selected="false" data-auth-mode="signup" data-i18n="createAccount">Create account</button></div>
