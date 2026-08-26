@@ -79,7 +79,7 @@ assert.equal(manifest.display, "standalone");
 assert.ok(manifest.shortcuts.length >= 2, "PWA shortcuts are required");
 has(serviceWorker, /repairdesk-v0\.3\.4[\s\S]*cache\.addAll[\s\S]*clients\.claim/i, "Offline application shell");
 has(html, /class="version-badge">0\.3\.4</, "Visible release version");
-has(html, /src="app\.js\?v=0\.3\.4-r1"/, "Browser-cache-safe application entry");
-has(serviceWorker, /app\.js\?v=0\.3\.4-r1/, "Offline cache for the revisioned application entry");
+has(html, /src="v034\.js\?v=0\.3\.4-r2"[\s\S]*src="app\.js\?v=0\.3\.4-r2"/, "Browser-cache-safe v0.3.4 entries");
+has(serviceWorker, /repairdesk-v0\.3\.4-r2[\s\S]*v034\.js\?v=0\.3\.4-r2[\s\S]*app\.js\?v=0\.3\.4-r2/, "Offline cache for the revisioned v0.3.4 entries");
 
 console.log("RepairDesk v0.3.4 release contract passed: all approved P0/P1 blocks are represented and guarded.");
