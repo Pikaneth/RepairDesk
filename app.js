@@ -1589,6 +1589,7 @@ function normaliseSettingsSnapshot(raw = {}) {
     setupComplete: Boolean(raw.setupComplete),
     setupVersion: Number(raw.setupVersion) || 0,
     workshop: { ...emptyWorkshop(), ...(raw.workshop || {}) },
+    workspace: normaliseWorkspaceData(raw.workspace),
     search: { engineId: String(raw.search?.engineId || "").trim() },
     updatedAt: String(raw.updatedAt || new Date(0).toISOString()),
   };

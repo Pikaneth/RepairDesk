@@ -38,7 +38,9 @@
   const html = (value) => typeof escapeHtml === "function" ? escapeHtml(value) : String(value ?? "").replace(/[&<>"']/g, "");
   const tr = (key, variables = {}) => typeof t === "function" ? t(key, variables) : key;
   const workspace = () => {
-    settings.workspace = normaliseWorkspaceData(settings.workspace);
+    if (!settings.workspace || typeof settings.workspace !== "object") {
+      settings.workspace = normaliseWorkspaceData(settings.workspace);
+    }
     return settings.workspace;
   };
   const role = () => state.cloud.workshopAccess?.role || "owner";

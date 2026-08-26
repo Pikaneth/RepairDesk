@@ -58,6 +58,8 @@ has(ui, /saveDraft/i, "Intake autosave");
 has(ui, /onKeyboard/i, "Keyboard shortcuts");
 has(ui, /beforeinstallprompt[\s\S]*serviceWorker/i, "PWA installation");
 has(ui, /selectedRepairs[\s\S]*bulkUpdate[\s\S]*bulkDelete/i, "Bulk actions");
+has(ui, /if \(!settings\.workspace \|\| typeof settings\.workspace !== "object"\)/, "Stable workspace state for entity writes");
+has(app, /normaliseSettingsSnapshot[\s\S]*workspace: normaliseWorkspaceData\(raw\.workspace\)/, "Cloud workspace snapshot normalization");
 
 // Database and security foundation.
 for (const table of ["workshops", "workshop_members", "workshop_snapshots", "workshop_customers", "workshop_devices", "workshop_repairs", "workshop_parts", "workshop_inventory", "workshop_suppliers", "workshop_purchase_orders", "workshop_appointments", "workshop_payments", "workshop_estimates", "workshop_attachments", "workshop_activity", "sync_health_events"]) {
