@@ -199,10 +199,11 @@ assert.equal(mergedRepairs.length, 1, "A newer tombstone must suppress an older 
 assert.equal(mergedRepairs[0].device, "Local version", "The latest repair update must win a sync conflict");
 
 const newestSettings = context.state.chooseNewestSettings(
-  { language: "ru", country: "RU", currency: "RUB", updatedAt: "2026-08-18T12:00:00.000Z" },
+  { language: "ru", country: "RU", currency: "RUB", workspace: { inventory: [{ id: "oled", name: "OLED" }] }, updatedAt: "2026-08-18T12:00:00.000Z" },
   { language: "en", country: "US", currency: "USD", updatedAt: "2026-08-18T11:00:00.000Z" },
 );
 assert.equal(newestSettings.language, "ru", "The newest workshop settings must win a sync conflict");
+assert.equal(newestSettings.workspace.inventory[0].name, "OLED", "Advanced workspace data must survive cloud conflict resolution");
 
 context.state.setAdminTestData({
   totals: { total_users: 12, new_users_30d: 5, active_today: 3, active_7d: 8, returning_30d: 4, open_feedback: 1, events_30d: 37, cloud_workspaces: 9, active_workspaces_24h: 3, stale_workspaces_30d: 2, total_repairs: 48, storage_bytes: 15360 },
