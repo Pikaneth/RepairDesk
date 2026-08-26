@@ -2398,10 +2398,10 @@ function adminViewRequested() {
 }
 
 async function initialiseApplication() {
-  window.RepairDeskV034?.init();
   initialiseTheme();
   refreshFormatters();
   applyTranslations();
+  window.RepairDeskV034?.init();
   try {
     const result = await RepairDeskCloud.init(handleAuthStateChange);
     cloudConfigured = Boolean(result.configured);
