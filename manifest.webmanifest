@@ -1,0 +1,18 @@
+{
+  "name": "RepairDesk",
+  "short_name": "RepairDesk",
+  "description": "Complete workshop control for repairs, customers, devices and inventory.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f2ed",
+  "theme_color": "#15231f",
+  "orientation": "any",
+  "icons": [
+    { "src": "assets/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "New repair", "short_name": "New repair", "url": "./?action=new-repair", "icons": [{ "src": "assets/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "Repairs", "short_name": "Repairs", "url": "./?view=repairs", "icons": [{ "src": "assets/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }] }
+  ]
+}

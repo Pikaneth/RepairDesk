@@ -209,7 +209,7 @@ context.state.setAdminTestData({
   daily: [{ day: new Date().toISOString().slice(0, 10), active_users: 3, events: 9 }],
   event_breakdown: [{ name: "repair_created", count: 14 }, { name: "app_open", count: 9 }],
   country_breakdown: [{ country: "DE", count: 7 }],
-  feedback: [{ id: 1, type: "idea", message: "Добавить сканер штрихкодов", page: "settings", app_version: "0.2.1", status: "new", created_at: "2026-08-18T10:00:00.000Z", workshop_name: "Тестовая мастерская", user_email: "owner@example.com" }],
+  feedback: [{ id: 1, type: "idea", message: "Добавить сканер штрихкодов", page: "settings", app_version: "0.3.4", status: "new", created_at: "2026-08-18T10:00:00.000Z", workshop_name: "Тестовая мастерская", user_email: "owner@example.com" }],
   audit: [{ id: 1, action: "feedback_status_changed", target_id: "1", details: { from: "new", to: "planned" }, created_at: "2026-08-18T11:00:00.000Z", admin_email: "owner@example.com" }],
 }, {
   total: 1,

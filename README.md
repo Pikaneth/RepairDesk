@@ -1,60 +1,116 @@
 # RepairDesk
 
-RepairDesk is a responsive, local-first workshop manager for repairs, parts, orders, customers, documents and day-to-day shop activity.
+RepairDesk is a local-first workshop operating system for repairs, customers, devices, inventory, purchasing, appointments, payments, documents and owner analytics.
 
-![RepairDesk](https://img.shields.io/badge/RepairDesk-v0.2.1-d9ff63?style=flat-square&labelColor=15231f)
+![RepairDesk](https://img.shields.io/badge/RepairDesk-v0.3.4-d9ff63?style=flat-square&labelColor=15231f)
 ![HTML](https://img.shields.io/badge/HTML5-Project-e34f26?style=flat-square&logo=html5&logoColor=white)
 ![CSS](https://img.shields.io/badge/CSS3-Responsive-1572b6?style=flat-square&logo=css3&logoColor=white)
 ![JavaScript](https://img.shields.io/badge/JavaScript-Vanilla-f7df1e?style=flat-square&logo=javascript&logoColor=111)
 ![Supabase](https://img.shields.io/badge/Supabase-Cloud-3ecf8e?style=flat-square&logo=supabase&logoColor=white)
 
-## What is included
+Live application: [pikaneth.github.io/RepairDesk](https://pikaneth.github.io/RepairDesk/)
 
-- Repair dashboard with live totals and status counts
-- Create, edit and delete repair records
-- Complete event timeline for every repair
-- Searchable repair history with technician notes
-- Multiple parts, costs, orders and delivery statuses
-- Local parts discovery for 20 countries
-- Optional Google Programmable Search results, product images and price comparison
-- Customer details and workshop business information
-- Numbered receipts and invoices with print-ready A4 output
-- 20 interface languages, right-to-left Arabic and worldwide currency selection
-- Responsive light and dark interfaces
-- Local browser mode with no account required
+## Version 0.3.4
 
-## Cloud accounts in v0.2.0
+### Workshop workspace
 
-- Email registration and sign-in
-- Email confirmation and password recovery
-- Local-first operation with automatic background synchronisation
-- Remembered local-mode choice instead of showing the account prompt after every reload
-- Safe migration of existing browser data into an account
-- Empty first cloud workspace, without uploading the local demonstration records
-- Multi-device merge based on record timestamps and deletion markers
-- Optimistic revision checks to prevent silent cloud overwrites
-- Bounded retry backoff for temporary cloud failures
-- Manual **Sync now** control and clear online, offline and error states
-- In-app feedback form for signed-in users
-- Product event collection for signed-in accounts without repair or customer contents in event properties
-- Private owner dashboard for registrations, daily activity, returning users and feedback triage
-- Row-level account isolation for profiles, workshop snapshots, feedback and analytics
+- Today dashboard with due, overdue, approval, pickup, revenue and low-stock indicators
+- Kanban and table repair views with drag-and-drop status changes
+- Intake workflow with priority, tags, technician, IMEI, condition, accessories, consent and signature
+- Repair cards with overview, diagnosis, parts, estimate, payments, documents, attachments, portal and history tabs
+- Customer CRM with contact details, repair history and lifetime value
+- Device registry with serial number, IMEI, warranty and repair history
+- Inventory with SKU, compatibility, stock thresholds, location, cost and sale price
+- Supplier directory and purchase orders with tracking, expenses and stock receiving
+- Appointment calendar combined with repair deadlines
+- Estimates with customer approval or rejection
+- Multiple and partial payments with method, balance and profit calculations
+- Secure customer status links and QR codes
+- Warranty returns linked to the original repair
+- Team invitations with owner, manager, technician and viewer roles
+- Branded receipt and invoice templates with logo, signature, payment details and reusable text
+- JSON backup and restore, CSV export, trash, undo and intake autosave
+- Bulk repair actions, saved filters, keyboard shortcuts and fast search
+- Installable PWA shell with offline application assets
 
-## Owner console in v0.2.1
+### Private owner console
 
-The private owner console adds operational visibility without exposing customer repair contents:
+The owner console is a separate privileged area with:
 
-- Six headline metrics for registrations, activity, retention, feedback, cloud workspaces and repairs managed
-- Thirty-day activity chart plus event and country breakdowns
-- Read-only user directory with email confirmation, workshop locale, last activity, last sync, revision, repair count and snapshot size
-- Search and incremental loading for the user directory
-- Feedback filtering and audited status changes
-- Private database audit log for owner actions
-- Spreadsheet-safe CSV export for the currently loaded owner report
+- Overview, users, workshops, analytics, feedback, system, security and releases sections
+- Custom date ranges and comparison with the previous period
+- DAU, WAU, MAU, returning-user, churn and retention views
+- Registration funnel, activity chart, product events and feature usage
+- Searchable user directory with operational filters
+- User profile details, recent devices, sync health, feedback and private support notes
+- Password-reset email, suspend/restore, account export and confirmed account deletion actions
+- Workshop directory with members, repair/customer totals, revision and storage size
+- Feedback priority, category, owner notes, workflow state and linked release
+- Sync success rate, conflicts, stale workshops, database size and attachment usage
+- Feature flags, rollout percentage, maintenance mode, minimum version and announcements
+- Owner MFA setup and a private audit log
+- Release history, version adoption and deployment state
 
-Owner access is enforced inside every privileged database function. The browser never receives a secret or service-role credential, and the directory returns workspace metadata only—not repair, customer, invoice or note contents.
+Owner data is not protected by a hidden button alone. Every privileged database function checks the authenticated account's `is_admin` flag. Normal users cannot call owner reports or mutations, and they never receive the owner navigation item.
 
-The application remains fully usable in local mode when cloud configuration is empty or the network is unavailable.
+## Update an existing installation to 0.3.4
+
+GitHub Pages publishes the frontend but cannot change Supabase automatically. Apply the database update once after deploying the code:
+
+1. Open the Supabase project.
+2. Go to **SQL Editor** and create a new query.
+3. Copy the complete [`supabase/schema.sql`](supabase/schema.sql) file into the editor.
+4. Click **Run** and wait for `Success. No rows returned`.
+5. Hard-refresh RepairDesk and sign in again.
+
+The script is transactional and idempotent. Existing account snapshots are copied into the new workshop model without deleting the legacy source data. It can be run again safely when updating the application.
+
+The versioned migration snapshot is also stored at [`supabase/migrations/202608260034_repairdesk_v034.sql`](supabase/migrations/202608260034_repairdesk_v034.sql).
+
+## Owner sign-in guide
+
+### First-time owner setup
+
+1. Register normally in RepairDesk and confirm the email address.
+2. Run `supabase/schema.sql` as described above.
+3. In Supabase **SQL Editor**, run this once with the owner's real email:
+
+```sql
+update public.profiles
+set is_admin = true,
+    account_status = 'active'
+where id = (
+  select id
+  from auth.users
+  where lower(email) = lower('owner@example.com')
+);
+```
+
+4. Sign out of RepairDesk and sign in again.
+5. Click **Owner panel** at the bottom of the main navigation.
+
+Direct owner sign-in URL:
+
+```text
+https://pikaneth.github.io/RepairDesk/?admin=1
+```
+
+The direct URL performs the same server-side role check. A non-owner is returned to the normal workshop.
+
+### Verify owner access
+
+```sql
+select u.email, p.is_admin, p.account_status
+from public.profiles p
+join auth.users u on u.id = p.id
+where p.is_admin = true;
+```
+
+Only explicitly promoted rows should be returned. Browser users cannot promote themselves because authenticated clients have no update grant on `is_admin` or `account_status`.
+
+### Enable owner 2FA
+
+Open **Owner panel → Security → Enable 2FA**, scan the QR code with an authenticator, enter the six-digit code and verify it. The factor is stored by Supabase Auth; no MFA secret is written to RepairDesk data.
 
 ## Getting started locally
 
@@ -68,24 +124,11 @@ python3 -m http.server 8000
 
 Open `http://localhost:8000`.
 
-Opening `index.html` directly is sufficient for most local features, but a local HTTP server is recommended for authentication redirects and consistent browser behaviour.
+Opening `index.html` directly works for most local features, but an HTTP server is required for service workers and is recommended for authentication redirects.
 
-## Enable registration and cloud sync
+## Cloud configuration
 
-RepairDesk uses Supabase Auth and Postgres. The frontend only needs a public project URL and publishable key; all account isolation is enforced in the database.
-
-### 1. Create the database
-
-1. Create a Supabase project.
-2. Open its SQL editor.
-3. Run the complete [`supabase/schema.sql`](supabase/schema.sql) file.
-
-The script creates profiles, workshop snapshots, feedback, analytics, indexes, triggers, row-level security policies and guarded RPC functions.
-It is idempotent and should be run again after upgrading RepairDesk so new owner-console functions and security changes are applied.
-
-### 2. Add the public connection values
-
-Open the project **Connect** dialog or **Project Settings → API Keys**, then copy the project URL and publishable key. Open `config.js` and set both values:
+RepairDesk uses Supabase Auth, Postgres and Storage. The frontend needs only the public project URL and publishable key:
 
 ```js
 window.REPAIRDESK_CONFIG = Object.freeze({
@@ -96,101 +139,74 @@ window.REPAIRDESK_CONFIG = Object.freeze({
 });
 ```
 
-The publishable key is intended for browser applications. Never place a secret key or service-role key in this repository.
+Never place a secret key or service-role key in this repository.
 
-### 3. Configure authentication redirects
-
-In Supabase authentication URL settings, use the deployed application URL as both the site URL and an allowed redirect URL.
-
-For this repository:
+In **Authentication → URL Configuration**, set both the site URL and an allowed redirect URL to:
 
 ```text
 https://pikaneth.github.io/RepairDesk/
 ```
 
-Email confirmation should remain enabled for public registration. Password reset links return to `?recovery=1` and open the secure password update dialog.
+Email confirmation should remain enabled. Password reset links return to `?recovery=1`.
 
-### 4. Enable the private owner dashboard
+## Data and synchronisation model
 
-Register through the application first. Then run the following once in the Supabase SQL editor, replacing the email address:
+RepairDesk saves locally first and synchronises signed-in changes in the background. Each workshop snapshot has a revision. A conflicting device receives the newer revision, merges records by `updatedAt`, applies deletion markers and retries.
 
-```sql
-update public.profiles
-set is_admin = true
-where id = (
-  select id from auth.users where email = 'owner@example.com'
-);
-```
+Version 0.3.4 keeps the snapshot as the offline interchange format and rebuilds normalized operational indexes in the same transaction. The indexed tables power owner analytics without exposing raw workshop snapshots in ordinary reports.
 
-After the next sign-in, an **Analytics** navigation item appears only for that administrator. The owner console shows registrations, active and returning users, workspace health, aggregate repair counts, account metadata, feedback and audited owner actions.
+Existing browser data is never uploaded silently. On first sign-in, the user chooses whether to merge local data or use the cloud workshop.
 
-The owner can also use the direct sign-in URL:
+## Roles
 
-```text
-https://pikaneth.github.io/RepairDesk/?admin=1
-```
+| Role | Workshop data | Repair changes | Team management | Owner console |
+|---|---:|---:|---:|---:|
+| Owner | Read | Write | Yes | Only with `is_admin` |
+| Manager | Read | Write | Yes | No |
+| Technician | Read | Write | No | No |
+| Viewer | Read | No | No | No |
 
-The route still performs the same database role check and falls back to the normal workspace for non-administrator accounts.
-
-The owner directory deliberately does not return repair snapshots. Raw workshop contents remain isolated to their account; the console receives only counts, timestamps, revisions and byte sizes needed for operational support.
-
-## Synchronisation model
-
-RepairDesk writes changes to `localStorage` first, so the interface stays fast and continues working offline. Signed-in changes are queued and uploaded in the background.
-
-Each cloud snapshot has a revision number. If another device updates the same account first, RepairDesk downloads the newer snapshot, merges records by `updatedAt`, applies the newest deletion markers and retries against the latest revision. The server performs the revision check and write in one guarded transaction.
-
-Existing v0.1.x browser data is never uploaded silently. After sign-in, the user chooses whether to merge local records with the account or use an existing cloud workspace. The migration dialog remains open until the choice is complete.
-
-## Analytics and feedback
-
-Signed-in activity records operational events such as application opens, repair creation, completion, deletion, view changes and feedback submission. Event properties contain small categorical values such as repair category, status, language and country; repair descriptions, customer details and document contents are not copied into analytics events.
-
-Feedback messages are stored separately and can be moved through `new`, `reviewing`, `planned`, `resolved` and `closed` states in the owner dashboard.
-
-Set `analyticsEnabled` to `false` in `config.js` to stop event collection while keeping accounts and synchronisation active.
+These permissions are checked in the database RPC layer as well as the interface.
 
 ## Security model
 
-- Every exposed table has row-level security enabled.
-- Users can read and update only their own account rows.
-- Snapshot writes use `save_user_data`, which validates shape, size and expected revision.
-- Direct client writes to the snapshot table are not granted.
-- Owner metrics require both an authenticated session and the `is_admin` profile flag.
-- Secret and service-role credentials are not used by the frontend.
-- Authentication sessions use the Supabase browser client with persisted sessions and automatic token refresh.
+- RLS is enabled for profiles, legacy snapshots, feedback, analytics and every new workshop table.
+- Direct table access is revoked where writes must pass through guarded RPC functions.
+- Workshop membership and active-account state are checked server-side.
+- Viewer accounts cannot save workshop snapshots.
+- Owner RPCs require an authenticated active profile with `is_admin = true`.
+- Privileged functions use a fixed empty `search_path` and schema-qualified objects.
+- Attachments use a private Storage bucket and workshop-ID path policies.
+- Customer portal tokens are high-entropy values stored only as SHA-256 hashes in indexed records.
+- Portal responses expose a deliberately limited repair status projection.
+- Owner mutations create audit records.
+- The frontend contains no secret or service-role credential.
 
-Workshop snapshots can contain customer information entered by the technician. Production deployments should publish a privacy notice, define a retention policy and configure regional hosting appropriate for their users.
+Workshop records may contain personal data and device access information. Production operators should publish a privacy notice, define retention rules and use the appropriate Supabase region.
 
-## Parts search
+## Backup, documents and offline use
 
-Every selected country has direct search links for established local marketplaces. These links work without an account or configuration.
-
-To show live offers inside RepairDesk:
-
-1. Open **Settings → Parts search**.
-2. Create a [Google Programmable Search Engine](https://programmablesearchengine.google.com/controlpanel/create).
-3. Copy the recommended store domains into its **Sites to search** list.
-4. Paste the `cx` identifier into RepairDesk and test the connection.
-
-Checkout and payment remain on the marketplace. After purchase, mark the selected offer as ordered; the repair moves into the waiting workflow. Mark the part received when it arrives.
-
-## Receipts and invoices
-
-Add workshop identity, contact details, tax rate and payment details in **Settings**. Completed repairs provide separate **Receipt** and **Invoice** actions. Each document receives a stable number and is added to the repair timeline.
-
-Use **Print / Save PDF** in the preview to send the A4 document to a printer or save it as a PDF.
+- **Settings → Data** exports or imports a complete JSON backup and exports repairs as spreadsheet-safe CSV.
+- Deleted repairs remain in Trash until restored or explicitly emptied.
+- Receipt and invoice numbering stays stable after the document is first created.
+- Custom document titles, logo, signature, payment details and footer are included in print output.
+- The service worker caches the application shell; edits remain local while offline and synchronise after reconnecting.
 
 ## Project structure
 
 ```text
 RepairDesk/
 ├── assets/
+│   ├── app-icon.svg
 │   └── favicon.svg
 ├── supabase/
+│   ├── migrations/
+│   │   └── 202608260034_repairdesk_v034.sql
 │   └── schema.sql
 ├── tests/
+│   ├── browser-v034.mjs
 │   ├── cloud-smoke.mjs
+│   ├── release-v034.mjs
 │   ├── runtime-smoke.mjs
 │   └── smoke.mjs
 ├── app.js
@@ -200,36 +216,42 @@ RepairDesk/
 ├── i18n.js
 ├── i18n-v012.js
 ├── i18n-v020.js
+├── i18n-v034.js
 ├── index.html
+├── manifest.webmanifest
 ├── styles.css
+├── styles-v034.css
+├── sw.js
+├── v034.js
 ├── LICENSE
 └── README.md
 ```
 
 ## Validation
 
-Run the dependency-free test suite with:
+Run the dependency-free checks:
 
 ```bash
 node tests/smoke.mjs
 node tests/runtime-smoke.mjs
 node tests/cloud-smoke.mjs
+node tests/release-v034.mjs
 ```
 
-The checks cover markup and translation integrity, browser-data upgrades, repair history, orders, documents, conflict merging, cloud configuration fallback, authentication state, guarded sync calls, analytics, feedback and row-level security declarations.
+With Playwright and Chromium installed, start the local server and run the end-to-end workflow:
+
+```bash
+python3 -m http.server 8000
+node tests/browser-v034.mjs
+```
+
+The suite covers markup and translations, data migration, conflict merging, guarded cloud RPCs, RLS declarations, analytics, feedback, navigation, intake, CRM, device registry, inventory, calendar, payments, estimates, customer portal and reports.
+
+After applying the schema, also run Supabase **Security Advisor** and **Performance Advisor** for the production project.
 
 ## Languages
 
-RepairDesk supports English, Russian, Ukrainian, German, Japanese, French, Italian, Spanish, Portuguese, Simplified Chinese, Hindi, Arabic, Bengali, Turkish, Korean, Indonesian, Polish, Dutch, Vietnamese and Thai. Arabic automatically switches the interface to right-to-left layout.
-
-## Roadmap
-
-- Photo attachments with storage quotas
-- JSON import and export
-- Tags and custom statuses
-- Team accounts and technician roles
-- Appointment scheduling
-- Inventory and barcode scanning
+RepairDesk supports English, Russian, Ukrainian, German, Japanese, French, Italian, Spanish, Portuguese, Simplified Chinese, Hindi, Arabic, Bengali, Turkish, Korean, Indonesian, Polish, Dutch, Vietnamese and Thai. Arabic switches the interface to right-to-left layout.
 
 ## Author
 

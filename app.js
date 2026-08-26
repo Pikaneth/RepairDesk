@@ -13,7 +13,7 @@ const { languages, messages } = RepairDeskI18n;
 const { countries, countryByCode, providerList, buildUrl, shoppingUrl, webSearchUrl, recommendedDomains } = RepairDeskCatalog;
 const languageByCode = new Map(languages.map((language) => [language.code, language]));
 const countryCodes = new Set(countries.map((country) => country.code));
-const validStatuses = new Set(["waiting", "in-progress", "completed"]);
+const validStatuses = new Set(["intake", "diagnosis", "approval", "waiting", "in-progress", "quality", "ready", "completed", "cancelled"]);
 const validCategories = new Set(["smartphone", "tablet", "laptop", "desktop", "console", "other"]);
 const categoryAliases = { Smartphone: "smartphone", Tablet: "tablet", Laptop: "laptop", "Desktop PC": "desktop", "Game console": "console", Other: "other" };
 const defaultCountryByLanguage = Object.fromEntries(countries.map((country) => [country.language, country.code]));
@@ -122,6 +122,34 @@ function emptyWorkshop() {
   return { name: "", address: "", city: "", postcode: "", phone: "", email: "", taxId: "", invoicePrefix: "RD", taxRate: 0, paymentDetails: "" };
 }
 
+function emptyWorkspaceData() {
+  return {
+    customers: [], devices: [], inventory: [], suppliers: [], appointments: [], purchaseOrders: [],
+    customStatuses: [], savedFilters: [], documentTemplates: [], trash: [], shortcuts: true,
+    documentSettings: {
+      logoUrl: "", defaultWarrantyDays: 90, receiptTitle: "", invoiceTitle: "",
+      footer: "", emailSubject: "", emailMessage: "",
+    },
+  };
+}
+
+function normaliseWorkspaceData(raw = {}) {
+  const base = emptyWorkspaceData();
+  const arrays = ["customers", "devices", "inventory", "suppliers", "appointments", "purchaseOrders", "customStatuses", "savedFilters", "documentTemplates", "trash"];
+  arrays.forEach((key) => { base[key] = Array.isArray(raw?.[key]) ? raw[key].filter((item) => item && typeof item === "object").slice(0, 5000) : []; });
+  base.shortcuts = raw?.shortcuts !== false;
+  base.documentSettings = {
+    logoUrl: String(raw?.documentSettings?.logoUrl || "").slice(0, 500),
+    defaultWarrantyDays: Math.min(3650, Math.max(0, Number(raw?.documentSettings?.defaultWarrantyDays) || 90)),
+    receiptTitle: String(raw?.documentSettings?.receiptTitle || "").slice(0, 120),
+    invoiceTitle: String(raw?.documentSettings?.invoiceTitle || "").slice(0, 120),
+    footer: String(raw?.documentSettings?.footer || "").slice(0, 1000),
+    emailSubject: String(raw?.documentSettings?.emailSubject || "").slice(0, 200),
+    emailMessage: String(raw?.documentSettings?.emailMessage || "").slice(0, 2000),
+  };
+  return base;
+}
+
 function loadSettings() {
   const detectedLanguage = detectLanguage();
   const detectedCountry = detectCountry(detectedLanguage);
@@ -132,6 +160,7 @@ function loadSettings() {
     setupComplete: false,
     setupVersion: 0,
     workshop: emptyWorkshop(),
+    workspace: emptyWorkspaceData(),
     search: { engineId: "" },
     updatedAt: new Date(0).toISOString(),
   };
@@ -149,6 +178,7 @@ function loadSettings() {
       setupComplete: Boolean(parsed.setupComplete),
       setupVersion: Number(parsed.setupVersion) || 0,
       workshop: { ...emptyWorkshop(), ...(parsed.workshop || {}) },
+      workspace: normaliseWorkspaceData(parsed.workspace),
       search: { engineId: String(parsed.search?.engineId || "").trim() },
       updatedAt: String(parsed.updatedAt || new Date(0).toISOString()),
     };
@@ -290,6 +320,10 @@ function normalizePart(part) {
     name: String(part?.name || messages.en.partFallback).slice(0, 80),
     ...(part?.nameKey ? { nameKey: part.nameKey } : {}),
     cost: toAmount(part?.cost),
+    price: toAmount(part?.price ?? part?.cost),
+    quantity: Math.max(1, Number(part?.quantity) || 1),
+    sku: String(part?.sku || "").slice(0, 80),
+    supplierId: String(part?.supplierId || "").slice(0, 120),
     order: normalizeOrder(part?.order),
   };
 }
@@ -312,16 +346,30 @@ function normalizeRepair(repair) {
     id: repair?.id || createId(),
     ...(repair?.sampleKey ? { sampleKey: repair.sampleKey } : {}),
     device: String(repair?.device || "").slice(0, 80),
+    brand: String(repair?.brand || "").slice(0, 80),
+    model: String(repair?.model || repair?.device || "").slice(0, 120),
+    imei: String(repair?.imei || "").slice(0, 40),
+    customerId: String(repair?.customerId || "").slice(0, 120),
+    deviceId: String(repair?.deviceId || "").slice(0, 120),
     category: normalizeCategory(repair?.category),
     issue: String(repair?.issue || "").slice(0, 120),
     ...(repair?.issueKey ? { issueKey: repair.issueKey } : {}),
     serial: String(repair?.serial || "").slice(0, 60),
-    status: validStatuses.has(repair?.status) ? repair.status : "in-progress",
+    status: validStatuses.has(repair?.status) || /^custom-[a-z0-9-]{1,30}$/.test(String(repair?.status || "")) ? repair.status : "in-progress",
+    priority: ["low", "normal", "high", "urgent"].includes(repair?.priority) ? repair.priority : "normal",
+    tags: Array.isArray(repair?.tags) ? repair.tags.map((tag) => String(tag).trim().slice(0, 40)).filter(Boolean).slice(0, 12) : [],
+    assignedTo: String(repair?.assignedTo || "").slice(0, 120),
     received: repair?.received || "",
     target: repair?.target || "",
     labour: toAmount(repair?.labour),
     parts: Array.isArray(repair?.parts) ? repair.parts.map(normalizePart) : [],
     notes: String(repair?.notes || "").slice(0, 600),
+    diagnosis: String(repair?.diagnosis || "").slice(0, 3000),
+    condition: String(repair?.condition || "").slice(0, 1000),
+    accessories: String(repair?.accessories || "").slice(0, 500),
+    intakeSignature: String(repair?.intakeSignature || "").slice(0, 200000),
+    intakeAccepted: Boolean(repair?.intakeAccepted),
+    accessCode: String(repair?.accessCode || "").slice(0, 100),
     ...(repair?.notesKey ? { notesKey: repair.notesKey } : {}),
     customer: {
       name: String(repair?.customer?.name || "").slice(0, 100),
@@ -330,9 +378,17 @@ function normalizeRepair(repair) {
       address: String(repair?.customer?.address || "").slice(0, 160),
     },
     documents: repair?.documents && typeof repair.documents === "object" ? repair.documents : {},
+    attachments: Array.isArray(repair?.attachments) ? repair.attachments.filter((item) => item?.id && item?.storagePath).slice(0, 100) : [],
+    payments: Array.isArray(repair?.payments) ? repair.payments.filter((item) => item?.id).slice(0, 200) : [],
+    estimate: repair?.estimate && typeof repair.estimate === "object" ? repair.estimate : null,
+    portalToken: String(repair?.portalToken || "").slice(0, 300),
+    warrantyUntil: String(repair?.warrantyUntil || "").slice(0, 10),
+    parentRepairId: String(repair?.parentRepairId || "").slice(0, 120),
+    completedAt: String(repair?.completedAt || (repair?.status === "completed" ? updatedAt : "")),
     createdAt,
     updatedAt,
   };
+  normalized.total = getRepairTotal(normalized);
   normalized.history = Array.isArray(repair?.history) && repair.history.length ? repair.history.map(normalizeHistoryEvent) : initialHistory(normalized);
   return normalized;
 }
@@ -401,6 +457,7 @@ function settingsSnapshot() {
     setupComplete: Boolean(settings.setupComplete),
     setupVersion: Number(settings.setupVersion) || SETUP_VERSION,
     workshop: { ...emptyWorkshop(), ...(settings.workshop || {}) },
+    workspace: normaliseWorkspaceData(settings.workspace),
     search: { engineId: String(settings.search?.engineId || "").trim() },
     updatedAt: String(settings.updatedAt || new Date().toISOString()),
   };
@@ -472,6 +529,7 @@ function applyTranslations() {
   updateCurrencyUI();
   updateCloudInterface();
   render();
+  window.RepairDeskV034?.translate();
 }
 
 function render() {
@@ -479,13 +537,14 @@ function render() {
   renderRepairCards();
   if (activeView === "history") renderHistory();
   if (activeView === "settings") updateRecommendedDomains();
+  window.RepairDeskV034?.render(activeView);
 }
 
 function renderStats() {
-  const waiting = repairs.filter((repair) => repair.status === "waiting").length;
+  const waiting = repairs.filter((repair) => ["waiting", "approval"].includes(repair.status)).length;
   const inProgress = repairs.filter((repair) => repair.status === "in-progress").length;
   const completed = repairs.filter((repair) => repair.status === "completed").length;
-  const active = waiting + inProgress;
+  const active = repairs.filter((repair) => !["completed", "cancelled"].includes(repair.status)).length;
   const total = repairs.reduce((sum, repair) => sum + getRepairTotal(repair), 0);
   elements.activeCount.textContent = active;
   elements.waitingCount.textContent = waiting;
@@ -570,6 +629,7 @@ function openNewRepair() {
   elements.partsList.replaceChildren();
   addPartRow();
   updateFormTotal();
+  window.RepairDeskV034?.prepareRepairForm(null);
   elements.repairDialog.showModal();
   requestAnimationFrame(() => elements.deviceInput.focus());
 }
@@ -599,6 +659,7 @@ function openEditRepair(repairId) {
   elements.partsList.replaceChildren();
   (repair.parts.length ? repair.parts : [{}]).forEach((part) => addPartRow({ ...part, name: getPartName(part) }));
   updateFormTotal();
+  window.RepairDeskV034?.prepareRepairForm(repair);
   elements.repairDialog.showModal();
   requestAnimationFrame(() => elements.deviceInput.focus());
 }
@@ -680,7 +741,9 @@ function validateRepairForm() {
 function comparableRepairData(repair) {
   return JSON.stringify({
     device: repair.device, category: repair.category, issue: repair.issue, serial: repair.serial, received: repair.received,
-    target: repair.target, labour: repair.labour, notes: repair.notes, customer: repair.customer,
+    target: repair.target, labour: repair.labour, notes: repair.notes, customer: repair.customer, priority: repair.priority,
+    tags: repair.tags, assignedTo: repair.assignedTo, diagnosis: repair.diagnosis, condition: repair.condition,
+    accessories: repair.accessories, estimate: repair.estimate, payments: repair.payments, warrantyUntil: repair.warrantyUntil,
   });
 }
 
@@ -717,6 +780,10 @@ function recordRepairChanges(existing, repair) {
 
 function saveRepairFromForm(event) {
   event.preventDefault();
+  if (window.RepairDeskV034?.canWrite && !window.RepairDeskV034.canWrite()) {
+    showToast(t("workspaceReadOnly"));
+    return;
+  }
   if (!validateRepairForm()) return;
   const existingId = elements.repairId.value;
   const existing = repairs.find((repair) => repair.id === existingId);
@@ -730,12 +797,14 @@ function saveRepairFromForm(event) {
     status, issue: elements.issueInput.value.trim(), serial: elements.serialInput.value.trim(), received: elements.receivedInput.value,
     target: elements.targetInput.value, labour: elements.labourInput.value, parts, notes: elements.notesInput.value.trim(),
     customer: { name: elements.customerNameInput.value.trim(), phone: elements.customerPhoneInput.value.trim(), email: elements.customerEmailInput.value.trim(), address: elements.customerAddressInput.value.trim() },
+    ...(window.RepairDeskV034?.readRepairFields(existing) || {}),
     documents: existing?.documents || {}, history: existing?.history || [], createdAt: existing?.createdAt || now, updatedAt: now,
   });
   recordRepairChanges(existing, repair);
   repairs = existing ? repairs.map((item) => item.id === repair.id ? repair : item) : [repair, ...repairs];
   selectedHistoryId = repair.id;
   saveRepairs();
+  window.RepairDeskV034?.afterRepairSaved(repair, existing);
   RepairDeskCloud?.track(existing ? "repair_updated" : "repair_created", { category: repair.category, status: repair.status }).catch(() => {});
   if (existing?.status !== "completed" && repair.status === "completed") RepairDeskCloud?.track("repair_completed", { category: repair.category }).catch(() => {});
   render();
@@ -751,11 +820,20 @@ function requestDelete(repairId) {
 
 function deletePendingRepair() {
   if (!pendingDeleteId) return;
+  if (window.RepairDeskV034?.canWrite && !window.RepairDeskV034.canWrite()) {
+    showToast(t("workspaceReadOnly"));
+    return;
+  }
+  const removedRepair = repairs.find((repair) => repair.id === pendingDeleteId);
+  settings.workspace = normaliseWorkspaceData(settings.workspace);
+  if (removedRepair) settings.workspace.trash = [{ kind: "repair", deletedAt: new Date().toISOString(), data: removedRepair }, ...settings.workspace.trash].slice(0, 200);
   deletedRepairs = [...deletedRepairs.filter((item) => item.id !== pendingDeleteId), { id: pendingDeleteId, deletedAt: new Date().toISOString() }].slice(-2000);
   repairs = repairs.filter((repair) => repair.id !== pendingDeleteId);
   if (selectedHistoryId === pendingDeleteId) selectedHistoryId = repairs[0]?.id || null;
   pendingDeleteId = null;
   saveRepairs();
+  saveSettings();
+  window.RepairDeskV034?.afterRepairDeleted(removedRepair);
   RepairDeskCloud?.track("repair_deleted").catch(() => {});
   render();
   elements.confirmDialog.close();
@@ -775,7 +853,8 @@ function showToast(message) {
 }
 
 function showView(view, repairId = null) {
-  const allowedViews = ["overview", "history", "settings", ...(cloudProfile?.is_admin ? ["admin"] : [])];
+  const advancedViews = ["repairs", "customers", "devices", "inventory", "calendar", "reports"];
+  const allowedViews = ["overview", "history", "settings", ...advancedViews, ...(cloudProfile?.is_admin ? ["admin"] : [])];
   if (!allowedViews.includes(view)) view = "overview";
   activeView = view;
   if (repairId) selectedHistoryId = repairId;
@@ -787,7 +866,8 @@ function showView(view, repairId = null) {
   document.querySelectorAll("[data-view-target]").forEach((button) => button.classList.toggle("active", button.dataset.viewTarget === view));
   if (view === "history") renderHistory();
   if (view === "settings") populateSettingsForm();
-  if (view === "admin") renderAdminDashboard();
+  if (view === "admin" && !window.RepairDeskV034?.handlesAdmin) renderAdminDashboard();
+  window.RepairDeskV034?.showView(view, repairId);
   RepairDeskCloud?.track("view_opened", { view }).catch(() => {});
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -892,6 +972,10 @@ function updateRecommendedDomains() {
 
 function saveSettingsForm(event) {
   event.preventDefault();
+  if (window.RepairDeskV034?.canWrite && !window.RepairDeskV034.canWrite()) {
+    showToast(t("workspaceReadOnly"));
+    return;
+  }
   currentLanguage = languageByCode.has(elements.settingsLanguage.value) ? elements.settingsLanguage.value : currentLanguage;
   currentCountry = countryCodes.has(elements.settingsCountry.value) ? elements.settingsCountry.value : currentCountry;
   currentCurrency = currencies.includes(elements.settingsCurrency.value) ? elements.settingsCurrency.value : currentCurrency;
@@ -1283,14 +1367,23 @@ function ensureDocument(repair, kind) {
 }
 
 function documentItemRows(repair) {
-  const partRows = repair.parts.map((part) => `<tr><td><strong>${escapeHtml(getPartName(part))}</strong>${part.order?.vendor ? `<small>${escapeHtml(part.order.vendor)}</small>` : ""}</td><td>1</td><td>${escapeHtml(formatMoney(part.cost))}</td><td>${escapeHtml(formatMoney(part.cost))}</td></tr>`).join("");
+  const partRows = repair.parts.map((part) => {
+    const quantity = Math.max(1, Number(part.quantity) || 1);
+    const unitPrice = toAmount(part.price ?? part.cost);
+    return `<tr><td><strong>${escapeHtml(getPartName(part))}</strong>${part.order?.vendor ? `<small>${escapeHtml(part.order.vendor)}</small>` : ""}</td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(formatMoney(unitPrice))}</td><td>${escapeHtml(formatMoney(unitPrice * quantity))}</td></tr>`;
+  }).join("");
   const labourRow = repair.labour ? `<tr><td><strong>${escapeHtml(t("labour"))}</strong><small>${escapeHtml(repair.device)}</small></td><td>1</td><td>${escapeHtml(formatMoney(repair.labour))}</td><td>${escapeHtml(formatMoney(repair.labour))}</td></tr>` : "";
   return partRows + labourRow || `<tr><td><strong>${escapeHtml(t("repairService"))}</strong><small>${escapeHtml(repair.device)}</small></td><td>1</td><td>${escapeHtml(formatMoney(0))}</td><td>${escapeHtml(formatMoney(0))}</td></tr>`;
 }
 
 function renderDocument(repair, kind, document) {
   const workshop = settings.workshop;
+  const documentSettings = settings.workspace?.documentSettings || {};
   const workshopName = workshop.name || t("defaultWorkshopName");
+  const documentTitle = String(kind === "receipt" ? documentSettings.receiptTitle : documentSettings.invoiceTitle).trim() || t(kind);
+  const logoUrl = safeUrl(documentSettings.logoUrl);
+  const footerText = String(documentSettings.footer || "").trim() || t(kind === "receipt" ? "receiptFooter" : "invoiceFooter");
+  const signature = String(repair.intakeSignature || "").startsWith("data:image/png;base64,") ? repair.intakeSignature : "";
   const customer = repair.customer;
   const subtotal = getRepairTotal(repair);
   const taxRate = toAmount(workshop.taxRate);
@@ -1298,8 +1391,8 @@ function renderDocument(repair, kind, document) {
   const total = subtotal + tax;
   const customerLines = [customer.name || t("noCustomer"), customer.address, customer.phone, customer.email].filter(Boolean);
   const contactLines = documentContactLines();
-  elements.documentDialogTitle.textContent = t(kind);
-  elements.documentSheet.innerHTML = `<header class="doc-header"><div><span class="doc-brand-mark">↳</span><strong>${escapeHtml(workshopName)}</strong><p>${contactLines.map(escapeHtml).join("<br>")}</p></div><div class="doc-title"><span>${escapeHtml(t("repairDocument"))}</span><h1>${escapeHtml(t(kind))}</h1><p>${escapeHtml(document.number)}</p></div></header><section class="doc-meta"><div><span>${escapeHtml(t("documentNumber"))}</span><strong>${escapeHtml(document.number)}</strong></div><div><span>${escapeHtml(t("issueDate"))}</span><strong>${escapeHtml(formatDate(document.createdAt.slice(0, 10)))}</strong></div><div><span>${escapeHtml(t("repairStatus"))}</span><strong>${escapeHtml(t(repair.status === "in-progress" ? "inProgress" : repair.status))}</strong></div></section><section class="doc-parties"><div><span>${escapeHtml(t("workshop"))}</span><strong>${escapeHtml(workshopName)}</strong><p>${contactLines.map(escapeHtml).join("<br>")}</p></div><div><span>${escapeHtml(t("billTo"))}</span><strong>${escapeHtml(customerLines[0])}</strong><p>${customerLines.slice(1).map(escapeHtml).join("<br>")}</p></div></section><section class="doc-repair"><div><span>${escapeHtml(t("deviceModel"))}</span><strong>${escapeHtml(repair.device)}</strong></div><div><span>${escapeHtml(t("serial"))}</span><strong>${escapeHtml(repair.serial || t("notSet"))}</strong></div><div><span>${escapeHtml(t("issue"))}</span><strong>${escapeHtml(getIssue(repair))}</strong></div></section><table class="doc-table"><thead><tr><th>${escapeHtml(t("description"))}</th><th>${escapeHtml(t("quantity"))}</th><th>${escapeHtml(t("unitPrice"))}</th><th>${escapeHtml(t("amount"))}</th></tr></thead><tbody>${documentItemRows(repair)}</tbody></table><section class="doc-totals"><div><span>${escapeHtml(t("subtotal"))}</span><strong>${escapeHtml(formatMoney(subtotal))}</strong></div><div><span>${escapeHtml(t("taxWithRate", { rate: taxRate }))}</span><strong>${escapeHtml(formatMoney(tax))}</strong></div><div class="doc-grand-total"><span>${escapeHtml(t("total"))}</span><strong>${escapeHtml(formatMoney(total))}</strong></div></section>${getNotes(repair) ? `<section class="doc-notes"><span>${escapeHtml(t("notes"))}</span><p>${escapeHtml(getNotes(repair))}</p></section>` : ""}${kind === "invoice" && workshop.paymentDetails ? `<section class="doc-payment"><span>${escapeHtml(t("paymentDetails"))}</span><p>${escapeHtml(workshop.paymentDetails)}</p></section>` : ""}<footer class="doc-footer"><p>${escapeHtml(t(kind === "receipt" ? "receiptFooter" : "invoiceFooter"))}</p><span>RepairDesk · Pikaneth (Sviatoslav)</span></footer>`;
+  elements.documentDialogTitle.textContent = documentTitle;
+  elements.documentSheet.innerHTML = `<header class="doc-header"><div>${logoUrl ? `<img class="doc-logo" src="${escapeHtml(logoUrl)}" alt="" />` : `<span class="doc-brand-mark">↳</span>`}<strong>${escapeHtml(workshopName)}</strong><p>${contactLines.map(escapeHtml).join("<br>")}</p></div><div class="doc-title"><span>${escapeHtml(t("repairDocument"))}</span><h1>${escapeHtml(documentTitle)}</h1><p>${escapeHtml(document.number)}</p></div></header><section class="doc-meta"><div><span>${escapeHtml(t("documentNumber"))}</span><strong>${escapeHtml(document.number)}</strong></div><div><span>${escapeHtml(t("issueDate"))}</span><strong>${escapeHtml(formatDate(document.createdAt.slice(0, 10)))}</strong></div><div><span>${escapeHtml(t("repairStatus"))}</span><strong>${escapeHtml(t(repair.status === "in-progress" ? "inProgress" : repair.status))}</strong></div></section><section class="doc-parties"><div><span>${escapeHtml(t("workshop"))}</span><strong>${escapeHtml(workshopName)}</strong><p>${contactLines.map(escapeHtml).join("<br>")}</p></div><div><span>${escapeHtml(t("billTo"))}</span><strong>${escapeHtml(customerLines[0])}</strong><p>${customerLines.slice(1).map(escapeHtml).join("<br>")}</p></div></section><section class="doc-repair"><div><span>${escapeHtml(t("deviceModel"))}</span><strong>${escapeHtml(repair.device)}</strong></div><div><span>${escapeHtml(t("serial"))}</span><strong>${escapeHtml(repair.serial || t("notSet"))}</strong></div><div><span>${escapeHtml(t("issue"))}</span><strong>${escapeHtml(getIssue(repair))}</strong></div></section><table class="doc-table"><thead><tr><th>${escapeHtml(t("description"))}</th><th>${escapeHtml(t("quantity"))}</th><th>${escapeHtml(t("unitPrice"))}</th><th>${escapeHtml(t("amount"))}</th></tr></thead><tbody>${documentItemRows(repair)}</tbody></table><section class="doc-totals"><div><span>${escapeHtml(t("subtotal"))}</span><strong>${escapeHtml(formatMoney(subtotal))}</strong></div><div><span>${escapeHtml(t("taxWithRate", { rate: taxRate }))}</span><strong>${escapeHtml(formatMoney(tax))}</strong></div><div class="doc-grand-total"><span>${escapeHtml(t("total"))}</span><strong>${escapeHtml(formatMoney(total))}</strong></div></section>${getNotes(repair) ? `<section class="doc-notes"><span>${escapeHtml(t("notes"))}</span><p>${escapeHtml(getNotes(repair))}</p></section>` : ""}${kind === "invoice" && workshop.paymentDetails ? `<section class="doc-payment"><span>${escapeHtml(t("paymentDetails"))}</span><p>${escapeHtml(workshop.paymentDetails)}</p></section>` : ""}${signature ? `<section class="doc-signature"><span>${escapeHtml(t("intakeSignature"))}</span><img src="${escapeHtml(signature)}" alt="" /></section>` : ""}<footer class="doc-footer"><p>${escapeHtml(footerText)}</p><span>RepairDesk · Pikaneth (Sviatoslav)</span></footer>`;
 }
 
 function openDocument(repairId, kind) {
@@ -1582,6 +1675,7 @@ function updateCloudInterface() {
   const adminVisible = Boolean(cloudUser && cloudProfile?.is_admin);
   elements.adminNavButton.hidden = !adminVisible;
   elements.adminMobileNavButton.hidden = !adminVisible;
+  window.RepairDeskV034?.updateAccount({ user: cloudUser, profile: cloudProfile, adminVisible, syncState: cloudSyncState });
   if (!adminVisible && activeView === "admin") showView("overview");
 }
 
@@ -1786,8 +1880,14 @@ async function loadCloudWorkspace(user) {
   if (!user) return;
   cloudUser = user;
   setCloudState("syncing");
-  const [snapshot, profile] = await Promise.all([RepairDeskCloud.loadSnapshot(), RepairDeskCloud.loadProfile()]);
+  const [snapshot, profile, workshopAccess, runtimeConfig] = await Promise.all([
+    RepairDeskCloud.loadSnapshot(),
+    RepairDeskCloud.loadProfile(),
+    RepairDeskCloud.loadWorkshop().catch(() => null),
+    RepairDeskCloud.loadRuntimeConfig().catch(() => null),
+  ]);
   cloudProfile = profile;
+  window.RepairDeskV034?.setCloudContext({ workshopAccess, runtimeConfig });
   adminDashboard = null;
   adminUsers = null;
   updateCloudInterface();
@@ -1846,6 +1946,7 @@ async function handleAuthStateChange(event, session) {
     cloudSyncRetryDelay = CLOUD_SYNC_RETRY_MIN;
     cloudUser = null;
     cloudProfile = null;
+    window.RepairDeskV034?.setCloudContext({ workshopAccess: null, runtimeConfig: null });
     adminDashboard = null;
     adminUsers = null;
     adminUsersReloadPending = false;
@@ -2297,6 +2398,7 @@ function adminViewRequested() {
 }
 
 async function initialiseApplication() {
+  window.RepairDeskV034?.init();
   initialiseTheme();
   refreshFormatters();
   applyTranslations();
@@ -2313,6 +2415,13 @@ async function initialiseApplication() {
     cloudConfigured = false;
     continueLocally();
     showToast(t("cloudNotConfigured"));
+  }
+  const startup = new URLSearchParams(window.location.search);
+  const startupView = startup.get("view");
+  if (settings.setupComplete && (cloudUser || localModeChosen || !cloudConfigured) && ["overview", "repairs", "customers", "devices", "inventory", "calendar", "reports", "settings"].includes(startupView)) showView(startupView);
+  if (settings.setupComplete && (cloudUser || localModeChosen || !cloudConfigured) && startup.get("action") === "new-repair") {
+    showView("repairs");
+    setTimeout(openNewRepair, 0);
   }
 }
 
