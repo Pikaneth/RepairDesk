@@ -1,4 +1,4 @@
-const CACHE = "repairdesk-v0.3.4";
+const CACHE = "repairdesk-v0.3.4-r1";
 const APP_SHELL = [
   "./", "./index.html", "./styles.css", "./styles-v034.css", "./config.js", "./i18n.js", "./i18n-v012.js",
   "./i18n-v020.js", "./i18n-v034.js", "./catalog.js", "./cloud.js", "./v034.js", "./app.js",
